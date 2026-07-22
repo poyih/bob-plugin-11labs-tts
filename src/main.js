@@ -359,6 +359,12 @@ function tts(query, completion) {
             var statusCode = resp.response ? resp.response.statusCode : 0;
             if (statusCode < 200 || statusCode >= 300) {
                 var failure = toServiceError(statusCode, resp.data);
+                if (statusCode === 402 || statusCode === 404) {
+                    // Bob 会保留已保存的选项值，菜单里删掉的旧值依然会被发出去，
+                    // 界面上却显示成菜单第一项。把真实 ID 带进报错，避免被界面误导。
+                    failure.message += "（实际发出的 Voice ID：" + voiceId +
+                        "，来源：" + (voice.source === "custom" ? "自定义输入框" : "音色菜单") + "）";
+                }
                 logInfo(
                     "failed status=" + statusCode + " voice=" + voiceId +
                     " model=" + modelId + " type=" + failure.type

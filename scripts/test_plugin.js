@@ -271,6 +271,8 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.type === "api" && r.error.message.indexOf("自定义 Voice ID") > 0,
         "402 带出换音色的具体做法");
+    ok(r.error.message.indexOf("9BWtsMINqrJLrRacOk9x") > 0 && r.error.message.indexOf("音色菜单") > 0,
+        "402 报错里带上实际发出的 Voice ID 及其来源");
 
     // 16. 2xx 但返回 JSON —— 上游插件会把它当音频播放
     nextResponse = jsonResponse(200, { detail: { status: "something_odd", message: "not audio" } });
