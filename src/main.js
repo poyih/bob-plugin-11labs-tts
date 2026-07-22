@@ -440,7 +440,7 @@ function tts(query, completion) {
                 throw { type: "param", message: "没有可合成的文本" };
             }
 
-            var modelId = trimmed($option.model) || "eleven_multilingual_v2";
+            var modelId = trimmed($option.model) || "eleven_flash_v2_5";
             var info = modelInfo(modelId);
             if (text.length > info.charLimit) {
                 throw {

@@ -16,7 +16,7 @@
 
 **84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
-**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 31 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
+**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 44 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
 ## 安装
 
@@ -43,7 +43,7 @@ make install
 
 | 提示 | 原因 |
 |---|---|
-| 当前订阅无法使用该音色（HTTP 402） | 免费订阅不能通过 API 使用音色库音色，而 ElevenLabs 的 Default 音色（Aria/Roger/Sarah 等）正属于音色库。改用「自定义 Voice ID」填你账号内的音色 |
+| 当前订阅无法使用该音色（HTTP 402） | 免费订阅不能通过 API 使用音色库(Voice Library)音色。菜单里 21 个是 Default/premade 音色，对免费档可用；真正会 402 的是 Legacy 旧音色（Aria/Rachel/Charlotte，会被路由到音色库、插件已预拦截）或你在自定义框填的音色库音色。改用菜单音色或账号内的音色 |
 | API Key 无效 | Key 填错或已撤销 |
 | API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |

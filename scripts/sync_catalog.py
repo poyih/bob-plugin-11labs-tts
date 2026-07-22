@@ -42,12 +42,12 @@ MODEL_TITLES = {
 MODEL_ORDER = ["eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2"]
 
 # 官方原文：「All our Default voices will expire on December 31, 2026」——
-# 21 个 Default 音色**全部**到期，不止对照表里那 19 个。
-# Bella 和 Adam 不在对照表里，意思是它们连官方接班音色都没有，是更差不是更好。
-# https://elevenlabs.io/docs/help-center/product/voice-customization/my-voices/what-are-default-voices
+# 账号里这 21 个 Default(premade) 音色全部到期。接班音色情况官方未给出可查证的
+# 对照表（流传的 19 行替换表来自第三方杂志，不可信），所以这里只标「停用」、
+# 不臆测哪个音色有没有接班。https://elevenlabs.io/docs/overview/capabilities/voices
 RETIRING_VOICES = {
-    "hpp4J3VqNfWAUOO0d1Us",  # Bella —— 无官方接班音色
-    "pNInz6obpgDQGcFmaJgB",  # Adam  —— 无官方接班音色
+    "hpp4J3VqNfWAUOO0d1Us",  # Bella
+    "pNInz6obpgDQGcFmaJgB",  # Adam
     "CwhRBWXzGAHq8TQ4Fs17",  # Roger
     "EXAVITQu4vr4xnSDxMaL",  # Sarah
     "FGY2WhTYpPnrIDTdsKH5",  # Laura
@@ -133,9 +133,11 @@ def model_entries(api_key):
 def voice_entries(api_key):
     """返回 (菜单条目, voice_id -> category)。
 
-    category 很关键：免费订阅通过 API 只能用账号内的音色，用音色库音色会 402
-    （Free users cannot use library voices via the API）。ElevenLabs 的 Default
-    音色（Aria/Roger/Sarah 等）也属于音色库，且官方已宣布 2026-12-31 停用。
+    category 很关键：免费订阅通过 API 用音色库(Voice Library)音色会 402
+    （Voice Library voices are not available via the API to free tier users）。
+    菜单里的 21 个是 Default/premade 音色，对免费档 API 也可用，与音色库音色是两回事；
+    Aria/Rachel/Charlotte 是 Legacy 音色（会被路由到音色库音色 → 免费档 402），
+    已在 main.js 发请求前拦截、不进菜单。官方已宣布 Default 音色 2026-12-31 停用。
     """
     voices = api_get("/voices", api_key).get("voices", [])
     entries = []
@@ -174,11 +176,14 @@ def apply_overlay(info):
 
     voice_option = option_by_id(info, "voice")
     body, tail = [], []
+    retiring_count = 0
     for entry in voice_option.get("menuValues", []):
         if entry["value"] == CUSTOM_VOICE:
             tail.append(entry)
             continue
         retiring = entry["value"] in RETIRING_VOICES
+        if retiring:
+            retiring_count += 1
         # 表里有中文标题就用中文；没有（自建音色等）保留 API 原文
         title = VOICE_TITLES.get(entry["value"]) or entry["title"].replace(RETIRING_SUFFIX, "")
         if retiring:
@@ -186,14 +191,14 @@ def apply_overlay(info):
         if title != entry["title"]:
             entry["title"] = title
             touched += 1
-        body.append((retiring, entry))
-    # 长期可用的排前面，省得默认选到年底就失效的
-    body.sort(key=lambda pair: (pair[0], pair[1]["title"]))
-    voice_option["menuValues"] = [e for _, e in body] + tail
+        body.append(entry)
+    # 保留 menuValues 既有顺序（v1.0.3 起按女前男后、美式前英式后手工排过）。
+    # 不再按退役/标题重排：21 个 Default 音色全部在退役名单里，旧 sort 会退化成
+    # 按标题字母序，把手工排序冲掉。__custom__ 始终排到最末。
+    voice_option["menuValues"] = body + tail
 
-    alive = sum(1 for r, _ in body if not r)
     print(f"\n展示层：模型 {len(kept)} 个，音色 {len(body)} 个"
-          f"（{alive} 个长期可用，{len(body) - alive} 个 2026-12-31 停用）")
+          f"（{len(body) - retiring_count} 个长期可用，{retiring_count} 个 2026-12-31 停用）")
     return touched
 
 

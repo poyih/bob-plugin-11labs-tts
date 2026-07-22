@@ -30,7 +30,10 @@ API_BASE = "https://api.elevenlabs.io/v1"
 # 2 个字符，把每次成功合成的成本压到最低
 TEXT = "hi"
 
-# 音色库音色：免费档用它必然 402，正是用来逼出那个 status 字符串的
+# 音色库音色：免费档用它必然 402，正是用来逼出那个 status 字符串的。
+# 注意 payg/付费档实测 Aria 是 200（付费档能用音色库音色），所以这条探针只在
+# 免费档 Key 下能复现 402；付费档跑时它返回 200，402 的 payment_required 字符串
+# 靠既有免费档真机记录支撑（见 HANDOFF「已经验证过」一节）。
 LIBRARY_VOICE = "9BWtsMINqrJLrRacOk9x"  # Aria
 
 

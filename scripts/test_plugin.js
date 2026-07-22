@@ -144,7 +144,7 @@ var plugin = globalThis.exports;
 
 var BASE_OPTIONS = {
     apiKey: "sk_test",
-    model: "eleven_multilingual_v2",
+    model: "eleven_flash_v2_5",
     voice: "hpp4J3VqNfWAUOO0d1Us",
     customVoiceId: "",
     outputFormat: "mp3_44100_128",
@@ -267,6 +267,11 @@ var EN = { text: "hello world", lang: "en" };
     nextResponse = jsonResponse(404, { detail: { status: "voice_not_found", message: "no such voice" } });
     r = await speak(EN);
     ok(r.error && r.error.type === "notFound", "voice_not_found 映射为 notFound");
+    // main.js 的「实际发出的 Voice ID」追加有三个分支（notFound ‖ 402 ‖ 404），
+    // 404/notFound 这条也必须带上真实 ID——曾因只测 402 而漏掉，删掉本断言测试仍过。
+    ok(r.error && r.error.message.indexOf("hpp4J3VqNfWAUOO0d1Us") > 0 &&
+        r.error.message.indexOf("音色菜单") > 0,
+        "404 notFound 报错也带上实际发出的 Voice ID 及来源");
 
     // 15. 402 免费订阅用不了音色库音色（Bob 日志里实际遇到的）
     nextResponse = jsonResponse(402, {
