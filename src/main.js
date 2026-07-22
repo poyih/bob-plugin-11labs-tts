@@ -320,6 +320,12 @@ function tts(query, completion) {
                 body.voice_settings = voiceSettings;
             }
 
+            // 英语专用模型读别的语言会出怪音。不拦截（用户可能是故意的），
+            // 但要在日志里留痕 —— Bob 会保留旧配置，这种错配很容易是残留造成的。
+            if (info.englishOnly && query.lang !== "en") {
+                logInfo("warn " + modelId + " 仅支持英语，当前语言 " + query.lang + "，发音可能异常");
+            }
+
             var outputFormat = trimmed($option.outputFormat) || "mp3_44100_128";
             var url = config.API_BASE + "/text-to-speech/" +
                 encodeURIComponent(voiceId) + "?output_format=" + outputFormat;
@@ -379,25 +385,28 @@ function tts(query, completion) {
             }
 
             var raw = resp.rawData || resp.data;
-            var audio = isBinary(raw) ? raw : $data.fromData(raw);
-            if (!audio || audio.length === 0) {
+            var audio = raw && isBinary(raw) ? raw : $data.fromData(raw);
+            // 不要用 audio.length 判空：Bob 实际运行时 $data 不暴露该属性（恒为
+            // undefined），拿它比较等于没有防护。base64 字符串长度才是可靠的。
+            var encoded = audio ? audio.toBase64() : "";
+            if (!encoded) {
                 throw { type: "api", message: "ElevenLabs 返回了空音频" };
             }
 
             logInfo(
-                "success status=" + statusCode + " bytes=" + audio.length +
+                "success status=" + statusCode + " base64_chars=" + encoded.length +
                 " ms=" + (Date.now() - startedAt)
             );
 
             completion({
                 result: {
                     type: "base64",
-                    value: audio.toBase64(),
+                    value: encoded,
                     raw: {
                         model_id: modelId,
                         voice_id: voiceId,
                         output_format: outputFormat,
-                        bytes: audio.length
+                        base64_chars: encoded.length
                     }
                 }
             });

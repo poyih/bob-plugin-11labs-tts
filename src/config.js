@@ -13,10 +13,10 @@ var MODELS = {
     eleven_v3: { charLimit: 5000, languageCode: true },
     eleven_multilingual_v2: { charLimit: 10000, languageCode: false },
     eleven_flash_v2_5: { charLimit: 40000, languageCode: true },
-    eleven_flash_v2: { charLimit: 30000, languageCode: true },
+    eleven_flash_v2: { charLimit: 30000, languageCode: true, englishOnly: true },
     // 已被 ElevenLabs 标记为 deprecated，保留只为兼容老配置
     eleven_turbo_v2_5: { charLimit: 40000, languageCode: true },
-    eleven_turbo_v2: { charLimit: 30000, languageCode: true }
+    eleven_turbo_v2: { charLimit: 30000, languageCode: true, englishOnly: true }
 };
 
 // 菜单里没有的模型（比如用户手填了新模型 ID）走这套保守默认值

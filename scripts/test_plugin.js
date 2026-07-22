@@ -51,10 +51,11 @@ function base64(bytes) {
     return out;
 }
 
+// 刻意不暴露 length：Bob 实际运行时 $data 就没有这个属性（文档写了但实测为
+// undefined），桩要跟真实运行时一致，否则会放过依赖 length 的错误代码。
 function makeData(bytes) {
     return {
         __data: true,
-        length: bytes.length,
         toBase64: function () {
             return base64(bytes);
         },
@@ -284,10 +285,17 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.type === "network", "网络失败映射为 network");
 
-    // 17. 空音频
+    // 17. 空音频（$data 没有 length，只能靠 base64 是否为空判断）
     nextResponse = { response: { statusCode: 200 }, data: makeData([]), rawData: makeData([]) };
     r = await speak(EN);
     ok(r.error && r.error.type === "api", "空音频报 api 错误");
+
+    // 18. 英语专用模型配上非英语
+    withOptions({ model: "eleven_flash_v2" });
+    nextResponse = audioResponse(200);
+    logs = [];
+    await speak({ text: "你好", lang: "zh-Hans" });
+    ok(loggedLine("warn eleven_flash_v2 仅支持英语"), "英语专用模型遇到中文时写警告日志");
 
     // 18. pluginValidate
     nextResponse = jsonResponse(200, { models: [] });
