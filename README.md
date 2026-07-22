@@ -79,6 +79,26 @@ make sync
 python3 scripts/sync_catalog.py --overlay-only
 ```
 
+### 核实假设
+
+文档会骗人（Bob 文档写了 `$data` 有 `length`，实测是 `undefined`，据此写的空音频防护形同虚设）。两处探针用来把假设打回原形：
+
+**运行时探针** —— 插件每次加载时自动写一行到 Bob 日志，记录 `$data` 实际有哪些方法：
+
+```bash
+grep '11labs-tts.*runtime' ~/Library/Containers/com.hezongyidev.Bob/Data/Documents/MMKitLogs/MMLogs/Default/*.log | tail -1
+```
+
+**API 探针** —— 拿真实 Key 打一遍 ElevenLabs，逼出错误 `detail.status` 的真实字符串、各模型可用性、格式订阅门槛、`voice_settings` 能否部分下发、`language_code` 到底被忽略还是报错：
+
+```bash
+python3 scripts/verify_api.py            # 全量，约 30~40 credits
+python3 scripts/verify_api.py --only status --only models
+python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
+```
+
+失败的请求不计费，成功的用 2 字符文本把成本压到最低。
+
 发版：
 
 ```bash

@@ -9,6 +9,25 @@ function logInfo(message) {
     }
 }
 
+// 插件加载时探一次运行时能力。Bob 文档写了 $data 有 length 属性，实际是
+// undefined —— 曾据此写的空音频防护形同虚设。文档不可全信，实测留档。
+(function probeRuntime() {
+    try {
+        var sample = $data.fromUTF8("ab");
+        logInfo(
+            "runtime" +
+            " $data.isData=" + typeof ($data && $data.isData) +
+            " sample.length=" + typeof sample.length +
+            " sample.toBase64=" + typeof sample.toBase64 +
+            " sample.toUTF8=" + typeof sample.toUTF8 +
+            " base64(ab)=" + sample.toBase64() +
+            " Date.now=" + typeof Date.now
+        );
+    } catch (err) {
+        logInfo("runtime 探测失败: " + (err && err.message));
+    }
+})();
+
 // ---------------------------------------------------------------- 工具函数
 
 function trimmed(value) {
