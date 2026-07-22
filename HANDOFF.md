@@ -129,18 +129,21 @@ voice_not_found              HTTP 404  ← 不存在的 voice_id
 - 「Our Default voices are being replaced with new voices that you will be able to use in perpetuity.」
 - 「Voice Library voices are not available via the API to free tier users.」
 
-`src/info.json` 菜单里那 21 个音色**全部**是 `category=premade`（= Default 音色），**全部**在这一天失效，包括默认的 Bella。这一条已用 payg 账号 live `/v1/voices` 逐条核对：21 个音色的 ID + 名称与当前 API 完全一致，类别全是 premade。
+`src/info.json` 菜单里那 21 个音色**全部**是 `category=premade`（= Default 音色），**全部**在这一天失效，包括默认的 Bella。这一条已用 payg 账号 live `/v1/voices` 逐条核对：21 个音色的 ID + 名称与当前 API 完全一致，类别全是 premade；每个音色对象**没有任何到期/弃用字段**（无 `expires_at`/`deprecated`，`is_legacy=false`，`available_for_tiers=[]`）——API 当前对到期**不透出任何信号**。payg + Bella 实合成 = HTTP 200、合法 mp3，**现在完全可用**。
 
-**接班音色情况未经官方核验**（2026-07-23 复核纠正）：此前文档写「官方替换对照表只有 19 行，Bella 和 Adam 连接班音色都没有」「官方指定的 19 个新音色 Darian/Talia/Elara…」——这些**都无法从官方来源证实**：
-- 官方 docs 只说「会被可永久使用的新音色取代」，**没有公开的替换 ID 表**。
-- 官方帮助站两篇相关文章（help.elevenlabs.io）被 Zendesk 反爬 403，取不到正文。
-- 搜到的唯一替换映射来自第三方杂志（elevenlabsmagazine.com），不可信；且它反而把 Adam 列为接班音色，与旧断言矛盾。
+**到期政策不区分档位（2026-07-23 三路独立核验确认）**：官方原文是「**All** our Default voices will expire」，**没有付费豁免**。付费(payg)账号和免费账号一样，21 个 Default 音色在 2026-12-31 后预期停止可用。「Voice Library voices are not available via the API to free tier users」是**另一回事**（音色库音色对免费档的 API 限制），不是 Default 到期政策。
 
-所以「Bella/Adam 有没有接班音色」「接班音色叫什么、是不是音色库音色」**一律按未定处理**。这不影响插件该怎么做——无论接班表什么样，「到期前标停用、引导用户改用自定义 Voice ID」都是稳妥的。
+**到期后旧 voice_id 会怎样——官方只说「no longer accessible」，未说明失败模式**。「自动路由到替换音色」是官方为 **Legacy 音色**（已被 fully deprecated、从所有产品移除的旧类别）描述的行为，**不是** Default 到期的官方行为，不要外推。Default 到期后旧 ID 预期直接停止工作（具体是 404/400 还是静默失败，官方未说）。
 
-**已知确定的限制**：Voice Library（音色库）音色对免费档 API 不可用（官方原文如上）。付费档实测可用（payg + Aria 音色库音色 = 200）。Default/premade 音色比音色库音色更可及，payg 实测 21 个全在账号内、可用。
+**「accounts created before March 2026」是官方说法（已核验）**：出自 help.elevenlabs.io Help Center 的「What are Default voices?」/「How do I access ElevenLabs Default voices?」两篇文章（direct fetch 被 Zendesk 403，逐字引文取自官方域名搜索 snippet）。含义是：**2026 年 3 月之后注册的账号现在就可能根本拿不到 Default 音色**——这是与 2026-12-31 到期**并列的另一条限制**。本 payg 账号早于该日期（21 个全在），不受影响。
 
-所以到期后，**不存在任何一份能写死进 `info.json`、对免费用户开箱可用的音色列表**——这不是「到时候换一批 ID」能解决的，除非接班的新 Default 音色对免费档 API 开放（未证实）。
+**接班音色情况仍未核验**：官方 docs 只说「会被可永久使用的新音色取代」，**没有公开的替换 ID 表**。流传的 19 行替换表来自第三方杂志（elevenlabsmagazine.com），不可信。合理**推断**（非官方）：接班音色大概率是新 premade/Default 类而非 Voice Library——因为 Legacy 自动路由对全档 API 生效，而 Voice Library 对免费档 API 禁用，若接班音色是 Library 会与「全档可永久使用」矛盾。但官方未直接陈述。
+
+**付费 vs 免费的迁移难度不同（关键结论）**：
+- 付费档（含 payg）：到期后迁移**容易**——付费档可通过 API 使用 Voice Library 音色（实测 Aria 200）和接班的新 Default 音色，换一批 voice ID 填进「自定义 Voice ID」或更新菜单即可继续用。
+- 免费档：到期后迁移**难**——音色库音色对免费档 API 禁用，没有现成、开箱可用的替换列表。免费档可能的出路见下文「唯一可能的出路」。
+
+所以：对**付费用户**，2026-12-31 不是末日，到期前换音色 ID 即可；对**免费用户**，到期后**不存在任何一份能写死进 `info.json`、开箱可用的音色列表**——除非接班的新 Default 音色对免费档 API 开放（未证实），或 Voice Design 音色能走 API（见下文，未验证）。
 
 ### 唯一可能的出路，需要验证
 
