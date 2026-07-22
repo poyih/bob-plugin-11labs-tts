@@ -52,16 +52,16 @@
             "defaultValue": "hpp4J3VqNfWAUOO0d1Us",
             "menuValues": [
                 {
-                    "title": "Adam — 男声 · 美式 · 强势坚定",
+                    "title": "Adam — 男声 · 美式 · 强势坚定（2026-12-31 停用）",
                     "value": "pNInz6obpgDQGcFmaJgB"
-                },
-                {
-                    "title": "Bella — 女声 · 美式 · 专业、明亮温暖",
-                    "value": "hpp4J3VqNfWAUOO0d1Us"
                 },
                 {
                     "title": "Alice — 女声 · 英式 · 清晰、像老师（2026-12-31 停用）",
                     "value": "Xb7hH8MSUJpSbSDYk0k2"
+                },
+                {
+                    "title": "Bella — 女声 · 美式 · 专业、明亮温暖（2026-12-31 停用）",
+                    "value": "hpp4J3VqNfWAUOO0d1Us"
                 },
                 {
                     "title": "Bill — 男声 · 美式 · 睿智成熟、均衡（2026-12-31 停用）",
@@ -140,7 +140,7 @@
                     "value": "__custom__"
                 }
             ],
-            "desc": "Bella 和 Adam 不在官方退役名单，可长期使用；标注「停用」的会在 2026-12-31 失效。若某个音色报 402，说明它不在你账号里 —— 免费订阅只能用账号内的音色，跑 make sync 可查。"
+            "desc": "这些是 ElevenLabs 的 Default 音色，官方已宣布 2026-12-31 全部失效（Bella 和 Adam 连接班音色都没有）。2026 年 3 月之后注册的账号可能一个都用不了，此时请改用下方的自定义 Voice ID。免费订阅的限制是音色库音色不能通过 API 使用，与音色在不在你账号里无关。"
         },
         {
             "identifier": "customVoiceId",

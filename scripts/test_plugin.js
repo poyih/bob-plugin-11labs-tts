@@ -145,7 +145,7 @@ var plugin = globalThis.exports;
 var BASE_OPTIONS = {
     apiKey: "sk_test",
     model: "eleven_multilingual_v2",
-    voice: "9BWtsMINqrJLrRacOk9x",
+    voice: "hpp4J3VqNfWAUOO0d1Us",
     customVoiceId: "",
     outputFormat: "mp3_44100_128",
     stability: "",
@@ -191,13 +191,19 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "param", "自定义音色为空时报 param");
 
     // 4. 自定义 Voice ID 覆盖菜单选择
-    withOptions({ voice: "9BWtsMINqrJLrRacOk9x", customVoiceId: "  myCloneVoice  " });
+    withOptions({ voice: "hpp4J3VqNfWAUOO0d1Us", customVoiceId: "  myCloneVoice  " });
     nextResponse = audioResponse(200);
     logs = [];
     r = await speak(EN);
     ok(lastRequest.url.indexOf("/text-to-speech/myCloneVoice?") > 0, "自定义 Voice ID 优先且被 trim");
     ok(loggedLine("voice=myCloneVoice(custom)"), "日志记录实际使用的 voice 及其来源");
     ok(loggedLine("success status=200"), "成功时写一条 success 日志");
+
+    // 4b. Legacy 音色提前拦截（上游插件的默认值 Rachel 就是其中之一）
+    withOptions({ customVoiceId: "21m00Tcm4TlvDq8ikWAM" });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("Legacy") > 0,
+        "Legacy 音色在发请求前就被拦下");
 
     // 5. 超出模型字符上限
     var long = new Array(10050).join("x") + "yyyy";
@@ -270,9 +276,9 @@ var EN = { text: "hello world", lang: "en" };
         }
     });
     r = await speak(EN);
-    ok(r.error && r.error.type === "api" && r.error.message.indexOf("自定义 Voice ID") > 0,
-        "402 带出换音色的具体做法");
-    ok(r.error.message.indexOf("9BWtsMINqrJLrRacOk9x") > 0 && r.error.message.indexOf("音色菜单") > 0,
+    ok(r.error && r.error.type === "api" && r.error.message.indexOf("音色库音色") > 0,
+        "402 说清限制是音色库来源，而非「不在你账号里」");
+    ok(r.error.message.indexOf("hpp4J3VqNfWAUOO0d1Us") > 0 && r.error.message.indexOf("音色菜单") > 0,
         "402 报错里带上实际发出的 Voice ID 及其来源");
 
     // 16. 2xx 但返回 JSON —— 上游插件会把它当音频播放

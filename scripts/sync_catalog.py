@@ -41,9 +41,13 @@ MODEL_TITLES = {
 }
 MODEL_ORDER = ["eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2"]
 
-# 官方公告的 Default 音色退役名单，2026-12-31 停用
+# 官方原文：「All our Default voices will expire on December 31, 2026」——
+# 21 个 Default 音色**全部**到期，不止对照表里那 19 个。
+# Bella 和 Adam 不在对照表里，意思是它们连官方接班音色都没有，是更差不是更好。
 # https://elevenlabs.io/docs/help-center/product/voice-customization/my-voices/what-are-default-voices
 RETIRING_VOICES = {
+    "hpp4J3VqNfWAUOO0d1Us",  # Bella —— 无官方接班音色
+    "pNInz6obpgDQGcFmaJgB",  # Adam  —— 无官方接班音色
     "CwhRBWXzGAHq8TQ4Fs17",  # Roger
     "EXAVITQu4vr4xnSDxMaL",  # Sarah
     "FGY2WhTYpPnrIDTdsKH5",  # Laura

@@ -115,6 +115,16 @@ var LANGUAGES = [
     ["cy", "cy", "v3"]
 ];
 
+// 已被 ElevenLabs 完全弃用的 Legacy 音色。官方原文：「Legacy voice IDs will
+// automatically route to their replacement voice IDs」——而替代目标是音色库音色，
+// 免费订阅通过 API 用不了，于是表现为 402「Free users cannot use library voices」。
+// 这正是本插件（以及上游插件，它的默认值就是 Rachel）开箱即坏的原因。
+var LEGACY_VOICES = {
+    "9BWtsMINqrJLrRacOk9x": "Aria",
+    "21m00Tcm4TlvDq8ikWAM": "Rachel",
+    "XB0fDUnXU5powFXDhCwa": "Charlotte"
+};
+
 var langMap = new Map(LANGUAGES.map(function (item) {
     return [item[0], item[1]];
 }));
@@ -123,4 +133,5 @@ exports.API_BASE = API_BASE;
 exports.MODELS = MODELS;
 exports.FALLBACK_MODEL = FALLBACK_MODEL;
 exports.LANGUAGES = LANGUAGES;
+exports.LEGACY_VOICES = LEGACY_VOICES;
 exports.langMap = langMap;

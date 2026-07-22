@@ -145,14 +145,15 @@ function toServiceError(statusCode, body) {
             troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
         };
     }
-    if (statusCode === 402) {
-        // 免费账号调 API 时用不了音色库音色；ElevenLabs 的默认音色（Aria/Roger/Sarah 等）
-        // 也属于音色库，且官方已宣布 2026-12-31 全部停用。
+    if (statusCode === 402 || statusCode === 400) {
+        // 判据是音色的来源：音色库（Voice Library）音色对免费订阅的 API 不开放。
+        // 分配给账号的 Default/premade 音色不受此限——Roger、Sarah 这些在
+        // 2026-03 前注册的账号上是能正常合成的。
         return {
             type: "api",
             message:
                 "当前订阅无法使用该音色" + detail +
-                "。请在「自定义 Voice ID」里换成你账号内的音色（Voice Design 生成的即可），或升级订阅",
+                "。音色库音色对免费订阅的 API 不开放，请换成菜单里的音色，或升级订阅",
             troubleshootingLink: "https://elevenlabs.io/app/voice-lab"
         };
     }
@@ -307,6 +308,18 @@ function tts(query, completion) {
                 throw {
                     type: "param",
                     message: "请在插件设置里选择音色，或填写自定义 Voice ID"
+                };
+            }
+
+            // Legacy 音色会被 ElevenLabs 路由到音色库音色，免费订阅必然 402。
+            // 提前拦截，省得用户对着一句「当前订阅无法使用该音色」去猜。
+            var legacyName = config.LEGACY_VOICES[voiceId];
+            if (legacyName) {
+                throw {
+                    type: "param",
+                    message:
+                        legacyName + "（" + voiceId + "）已被 ElevenLabs 列为 Legacy 音色，" +
+                        "调用时会被路由到音色库音色，免费订阅无法使用。请换一个音色"
                 };
             }
 
