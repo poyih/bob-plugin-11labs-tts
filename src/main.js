@@ -1,5 +1,14 @@
 var config = require("./config.js");
 
+var LOG_TAG = "[11labs-tts]";
+
+// 写进 Bob 日志，方便出问题时确认实际发出去的是什么
+function logInfo(message) {
+    if (typeof $log !== "undefined" && $log && typeof $log.info === "function") {
+        $log.info(LOG_TAG + " " + message);
+    }
+}
+
 // ---------------------------------------------------------------- 工具函数
 
 function trimmed(value) {
@@ -151,13 +160,16 @@ function modelInfo(modelId) {
 var CUSTOM_VOICE = "__custom__";
 
 // 选中的音色：自定义 Voice ID 优先，方便用克隆音色 / 菜单里还没有的新音色
-function resolveVoiceId() {
+function resolveVoice() {
     var custom = trimmed($option.customVoiceId);
     if (custom) {
-        return custom;
+        return { id: custom, source: "custom" };
     }
     var selected = trimmed($option.voice);
-    return selected === CUSTOM_VOICE ? "" : selected;
+    return {
+        id: selected === CUSTOM_VOICE ? "" : selected,
+        source: "menu"
+    };
 }
 
 // 只把用户显式覆盖过的项发给 API，其余留空则沿用音色在 ElevenLabs 上保存的设置
@@ -270,7 +282,8 @@ function tts(query, completion) {
                 };
             }
 
-            var voiceId = resolveVoiceId();
+            var voice = resolveVoice();
+            var voiceId = voice.id;
             if (!voiceId) {
                 throw {
                     type: "param",
@@ -311,6 +324,17 @@ function tts(query, completion) {
             var url = config.API_BASE + "/text-to-speech/" +
                 encodeURIComponent(voiceId) + "?output_format=" + outputFormat;
 
+            logInfo(
+                "start chars=" + text.length +
+                " lang=" + query.lang +
+                " model=" + modelId +
+                " voice=" + voiceId + "(" + voice.source + ")" +
+                " format=" + outputFormat +
+                " language_code=" + (body.language_code || "-") +
+                " voice_settings=" + (voiceSettings ? JSON.stringify(voiceSettings) : "-")
+            );
+            var startedAt = Date.now();
+
             var resp = await $http.request({
                 method: "POST",
                 url: url,
@@ -334,11 +358,17 @@ function tts(query, completion) {
             // 表现为「点了没声音也没报错」。
             var statusCode = resp.response ? resp.response.statusCode : 0;
             if (statusCode < 200 || statusCode >= 300) {
-                throw toServiceError(statusCode, resp.data);
+                var failure = toServiceError(statusCode, resp.data);
+                logInfo(
+                    "failed status=" + statusCode + " voice=" + voiceId +
+                    " model=" + modelId + " type=" + failure.type
+                );
+                throw failure;
             }
 
             // 2xx 但返回的是 JSON（Bob 能解析成对象）说明不是音频
             if (resp.data && typeof resp.data === "object" && !isBinary(resp.data)) {
+                logInfo("failed status=" + statusCode + " 响应不是音频");
                 throw toServiceError(statusCode, resp.data);
             }
 
@@ -347,6 +377,11 @@ function tts(query, completion) {
             if (!audio || audio.length === 0) {
                 throw { type: "api", message: "ElevenLabs 返回了空音频" };
             }
+
+            logInfo(
+                "success status=" + statusCode + " bytes=" + audio.length +
+                " ms=" + (Date.now() - startedAt)
+            );
 
             completion({
                 result: {
@@ -361,6 +396,7 @@ function tts(query, completion) {
                 }
             });
         } catch (err) {
+            logInfo("error type=" + (err.type || "unknown") + " message=" + (err.message || ""));
             completion({
                 error: {
                     type: err.type || "unknown",

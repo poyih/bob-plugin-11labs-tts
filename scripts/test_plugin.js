@@ -80,10 +80,22 @@ globalThis.$data = {
     }
 };
 
+var logs = [];
+
 globalThis.$log = {
-    info: function () {},
-    error: function () {}
+    info: function (m) {
+        logs.push(String(m));
+    },
+    error: function (m) {
+        logs.push(String(m));
+    }
 };
+
+function loggedLine(needle) {
+    return logs.some(function (line) {
+        return line.indexOf(needle) >= 0;
+    });
+}
 
 globalThis.$option = {};
 
@@ -180,8 +192,11 @@ var EN = { text: "hello world", lang: "en" };
     // 4. 自定义 Voice ID 覆盖菜单选择
     withOptions({ voice: "9BWtsMINqrJLrRacOk9x", customVoiceId: "  myCloneVoice  " });
     nextResponse = audioResponse(200);
+    logs = [];
     r = await speak(EN);
     ok(lastRequest.url.indexOf("/text-to-speech/myCloneVoice?") > 0, "自定义 Voice ID 优先且被 trim");
+    ok(loggedLine("voice=myCloneVoice(custom)"), "日志记录实际使用的 voice 及其来源");
+    ok(loggedLine("success status=200"), "成功时写一条 success 日志");
 
     // 5. 超出模型字符上限
     var long = new Array(10050).join("x") + "yyyy";
