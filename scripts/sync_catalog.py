@@ -66,6 +66,33 @@ RETIRING_VOICES = {
 }
 RETIRING_SUFFIX = "（2026-12-31 停用）"
 
+# 音色中文标题。译自 /v1/voices 当前返回的 name + labels，不是照搬上游 2025 年
+# 那份 —— 有几个音色的定位已经改了（例如 Callum 从「跨大西洋口音」变成美式）。
+# 表里没有的音色（比如你自己用 Voice Design 建的）保留 API 原文。
+VOICE_TITLES = {
+    "pNInz6obpgDQGcFmaJgB": "Adam — 男声 · 美式 · 强势坚定",
+    "hpp4J3VqNfWAUOO0d1Us": "Bella — 女声 · 美式 · 专业、明亮温暖",
+    "Xb7hH8MSUJpSbSDYk0k2": "Alice — 女声 · 英式 · 清晰、像老师",
+    "pqHfZKP75CvOlQylNhV4": "Bill — 男声 · 美式 · 睿智成熟、均衡",
+    "nPczCjzI2devNBz1zQrb": "Brian — 男声 · 美式 · 低沉浑厚、令人安定",
+    "N2lVS1w4EtoT3dr4eOWO": "Callum — 男声 · 美式 · 沙哑、狡黠",
+    "IKne3meq5aSn9XLyUdCD": "Charlie — 男声 · 澳式 · 低沉自信、有活力",
+    "iP95p4xoKVk53GoZ742B": "Chris — 男声 · 美式 · 有魅力、接地气",
+    "onwK4e9ZLuTAKqWW03F9": "Daniel — 男声 · 英式 · 沉稳播音腔",
+    "cjVigY5qzO86Huf0OWal": "Eric — 男声 · 美式 · 流畅、可信赖",
+    "JBFqnCBsd6RMkjVDRZzb": "George — 男声 · 英式 · 温暖、擅长讲故事",
+    "SOYHLrjzK2X1ezoPC6cr": "Harry — 男声 · 美式 · 凶悍战士感",
+    "cgSgspJ2msm6clMCkdW9": "Jessica — 女声 · 美式 · 俏皮明亮、温暖",
+    "FGY2WhTYpPnrIDTdsKH5": "Laura — 女声 · 美式 · 热情、古灵精怪",
+    "TX3LPaxmHKxFdv7VOQHJ": "Liam — 男声 · 美式 · 有活力、自媒体口吻",
+    "pFZP5JQG7iQjIQuC4Bku": "Lily — 女声 · 英式 · 丝绒质感、演员腔",
+    "XrExE9yKIg1WjnnlVkGX": "Matilda — 女声 · 美式 · 博学、专业",
+    "SAz9YHcvj6GT2YYXdXww": "River — 中性声 · 美式 · 放松、中立、偏说明性",
+    "CwhRBWXzGAHq8TQ4Fs17": "Roger — 男声 · 美式 · 松弛随性、声音浑厚",
+    "EXAVITQu4vr4xnSDxMaL": "Sarah — 女声 · 美式 · 成熟沉稳、令人安心",
+    "bIHbv24MWmeRgasZH58o": "Will — 男声 · 美式 · 松弛乐观",
+}
+
 
 def api_get(path, api_key):
     req = urllib.request.Request(API_BASE + path, headers={"xi-api-key": api_key})
@@ -148,7 +175,8 @@ def apply_overlay(info):
             tail.append(entry)
             continue
         retiring = entry["value"] in RETIRING_VOICES
-        title = entry["title"].replace(RETIRING_SUFFIX, "")
+        # 表里有中文标题就用中文；没有（自建音色等）保留 API 原文
+        title = VOICE_TITLES.get(entry["value"]) or entry["title"].replace(RETIRING_SUFFIX, "")
         if retiring:
             title += RETIRING_SUFFIX
         if title != entry["title"]:
