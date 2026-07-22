@@ -4,21 +4,19 @@
 
 > ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效，届时无现成替代方案。详见 [HANDOFF.md](HANDOFF.md)。
 
-重写自 [cdpath/bob-plugin-elevenlabs](https://github.com/cdpath/bob-plugin-elevenlabs)（MIT，2025-03 后停更）。
+## 特点
 
-## 相比上游改了什么
+**错误不会被吞掉。** ElevenLabs 失败时返回的是 JSON，不检查状态码就直接播放，表现是「点了没声音也没报错」。这里把 HTTP 状态码和 `detail.code` / `detail.status` 一起映射成 Bob 的错误类型：额度用完、Key 缺权限、音色不可用、文本超长，各报各的，并带上实际发出的 Voice ID。
 
-| | 上游 | 本插件 |
-|---|---|---|
-| HTTP 错误处理 | **不检查状态码**，401/422 的 JSON 错误体会被当成音频播放（表现为「点了没反应」） | 状态码 + ElevenLabs 的 `detail.status` 一起映射成 Bob 的错误类型，额度用完、Key 无效、音色不存在分别提示 |
-| 模型 | 停在 2025-03，含已废弃的 `turbo_v2` / `turbo_v2_5` 和 v1 老模型 | v3 / Multilingual v2 / Flash v2.5 / Flash v2，默认 Flash v2.5（延迟约 75ms，适合即时朗读） |
-| 音色 | 21 个写死的列表，过期就没法用新音色 | 21 个官方音色 + **自定义 Voice ID 输入框**，克隆音色和新音色都能用，列表过期也不影响 |
-| 音色参数 | 硬编码 `stability 0.5 / similarity_boost 0.75`，**覆盖**你在官网给音色存的设置 | 默认不下发，沿用音色自带设置；需要时再逐项覆盖，另可调语速、风格、Speaker Boost |
-| 音频格式 | 固定 128kbps | 可选 32 / 64 / 128 / 192 kbps |
-| 语言 | 17 种 | 84 个 Bob 语言代码，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数） |
-| 长文本 | 直接发出去等 API 报错 | 按模型的字符上限提前拦截并说明 |
-| 测试 | 无 | `make test`，用 macOS 自带的 jsc（Bob 同款 JavaScriptCore 引擎）跑 23 项断言，不联网、不消耗额度 |
-| 发布 | Node 脚本 | 纯标准库 Python + Makefile，打 tag 自动发版 |
+**音色列表过期也不影响使用。** 除了内置菜单，还有一个自定义 Voice ID 输入框，优先级更高 —— 克隆音色、Voice Design 生成的音色、菜单里还没有的新音色都能直接填。已知会被 ElevenLabs 弃用的 Legacy 音色会在发请求前拦下。
+
+**不覆盖你的音色设置。** 默认完全不下发 `voice_settings`，沿用你在 ElevenLabs 网站上给该音色保存的配置；需要时再逐项覆盖稳定性、相似度、风格、语速、Speaker Boost。
+
+**默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3。音频码率可调，32kbps 能明显缩短等待。
+
+**84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+
+**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 31 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
 ## 安装
 
@@ -46,10 +44,11 @@ make install
 | 提示 | 原因 |
 |---|---|
 | 当前订阅无法使用该音色（HTTP 402） | 免费订阅不能通过 API 使用音色库音色，而 ElevenLabs 的 Default 音色（Aria/Roger/Sarah 等）正属于音色库。改用「自定义 Voice ID」填你账号内的音色 |
-| API Key 无效或缺少权限 | Key 填错，或者创建时没勾 `text_to_speech` |
+| API Key 无效 | Key 填错或已撤销 |
+| API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
 | 音色不存在 | 自定义 Voice ID 写错，或那个音色不在当前账号下 |
-| 文本长度超过上限 | v3 5,000 / Multilingual v2 10,000 / Flash v2 30,000 / Flash v2.5 40,000 字符 |
+| 文本超过该模型单次字符上限 | 各模型上限不同，且按账号档位区分。分段朗读即可 |
 | 请求过于频繁 | 触发并发限制，稍等重试 |
 
 ## 开发
@@ -104,8 +103,11 @@ python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 发版：
 
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
+git push                                    # 必须先推代码
+git tag v1.0.3 && git push origin v1.0.3    # 再推 tag
 ```
+
+顺序不能反 —— 工作流检出的是默认分支，tag 先到会用新版本号打出旧代码的包。已加校验，顺序错了会直接失败并给出修复命令。
 
 GitHub Actions 会跑测试、把版本号写回 `src/info.json`、打包、算 sha256、追加 `appcast.json` 记录并创建 Release。Bob 靠 `appcast.json` 检查更新。
 
@@ -123,8 +125,11 @@ scripts/
   test_plugin.js    jsc 测试（桩掉 $http / $data / $option）
   release.py        写版本号 → 打包 → sha256 → 更新 appcast
   sync_catalog.py   从 ElevenLabs 同步模型/音色到 info.json
+  verify_api.py     拿真实 Key 实测 API 行为，核实文档说法
 ```
+
+待验证事项与 2026-12-31 的应对见 [HANDOFF.md](HANDOFF.md)。
 
 ## License
 
-MIT。上游 [cdpath/bob-plugin-elevenlabs](https://github.com/cdpath/bob-plugin-elevenlabs) 同为 MIT。
+MIT

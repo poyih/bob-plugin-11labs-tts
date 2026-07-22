@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """把 ElevenLabs 账号里的模型 / 音色同步到 src/info.json 的下拉菜单。
 
-上游插件停更后最先过时的就是这两个列表，所以这里做成随手可跑的：
+这两个列表最容易过时，所以做成随手可跑的：
 
     python3 scripts/sync_catalog.py --api-key sk_xxx            # 只补新增，保留已有中文标题
     python3 scripts/sync_catalog.py --api-key sk_xxx --replace  # 用 API 返回的英文标题整体重写
@@ -70,7 +70,7 @@ RETIRING_VOICES = {
 }
 RETIRING_SUFFIX = "（2026-12-31 停用）"
 
-# 音色中文标题。译自 /v1/voices 当前返回的 name + labels，不是照搬上游 2025 年
+# 音色中文标题。译自 /v1/voices 当前返回的 name + labels，不是沿用 2025 年
 # 那份 —— 有几个音色的定位已经改了（例如 Callum 从「跨大西洋口音」变成美式）。
 # 表里没有的音色（比如你自己用 Voice Design 建的）保留 API 原文。
 VOICE_TITLES = {
@@ -198,7 +198,7 @@ def apply_overlay(info):
 
 
 def merge(option, fresh, replace, keep_tail_value=None):
-    """返回 (新的 menuValues, 新增列表, 上游已不存在的列表)。"""
+    """返回 (新的 menuValues, 新增列表, 账号里已不存在的列表)。"""
     existing = option.get("menuValues", [])
     tail = [e for e in existing if e["value"] == keep_tail_value]
     existing_body = [e for e in existing if e["value"] != keep_tail_value]

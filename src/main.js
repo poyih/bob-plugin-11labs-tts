@@ -448,7 +448,7 @@ function tts(query, completion) {
                 };
             }
 
-            // 上游插件漏了这一步：非 2xx 时响应体是 JSON 错误，直接 base64 会当成音频播放，
+            // 必须查状态码：非 2xx 时响应体是 JSON 错误，直接 base64 会被当成音频播放，
             // 表现为「点了没声音也没报错」。
             var statusCode = resp.response ? resp.response.statusCode : 0;
             if (statusCode < 200 || statusCode >= 300) {

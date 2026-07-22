@@ -199,7 +199,7 @@ var EN = { text: "hello world", lang: "en" };
     ok(loggedLine("voice=myCloneVoice(custom)"), "日志记录实际使用的 voice 及其来源");
     ok(loggedLine("success status=200"), "成功时写一条 success 日志");
 
-    // 4b. Legacy 音色提前拦截（上游插件的默认值 Rachel 就是其中之一）
+    // 4b. Legacy 音色提前拦截
     withOptions({ customVoiceId: "21m00Tcm4TlvDq8ikWAM" });
     r = await speak(EN);
     ok(r.error && r.error.type === "param" && r.error.message.indexOf("Legacy") > 0,
@@ -293,7 +293,7 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "secretKey" && r.error.message.indexOf("缺少权限") > 0,
         "新格式 detail.code 能被识别，且区分于「Key 无效」");
 
-    // 16. 2xx 但返回 JSON —— 上游插件会把它当音频播放
+    // 16. 2xx 但返回 JSON —— 不查状态码就会把它当音频播放
     nextResponse = jsonResponse(200, { detail: { status: "something_odd", message: "not audio" } });
     r = await speak(EN);
     ok(r.error && !r.result, "2xx 但响应不是音频时报错而不是播放乱码");
