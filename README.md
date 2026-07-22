@@ -2,6 +2,8 @@
 
 给 [Bob](https://bobtranslate.com) 用的 ElevenLabs TTS 插件，划词之后直接用 AI 语音朗读。
 
+> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效，届时无现成替代方案。详见 [HANDOFF.md](HANDOFF.md)。
+
 重写自 [cdpath/bob-plugin-elevenlabs](https://github.com/cdpath/bob-plugin-elevenlabs)（MIT，2025-03 后停更）。
 
 ## 相比上游改了什么

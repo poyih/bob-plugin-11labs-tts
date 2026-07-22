@@ -94,7 +94,11 @@ function parseApiError(body) {
             .filter(Boolean)
             .join("；");
     } else if (detail && typeof detail === "object") {
-        result.status = detail.status || "";
+        // ElevenLabs 现行错误格式用 detail.code 判别，detail.status 已被官方标为
+        // legacy 但仍在返回。两套命名空间并存且不互通，所以都要读。
+        result.status = detail.code || detail.status || "";
+        result.kind = detail.type || "";
+        result.requestId = detail.request_id || "";
         result.message = detail.message || "";
     }
 
@@ -108,6 +112,52 @@ function parseApiError(body) {
 function toServiceError(statusCode, body) {
     var parsed = parseApiError(body);
     var detail = parsed.message ? "：" + parsed.message : "";
+
+    switch (parsed.status || parsed.kind) {
+        // 402：免费订阅用音色库音色。真实字符串（旧 status / 新 type 都叫这个）
+        case "payment_required":
+        case "voice_access_denied":
+            return {
+                type: "api",
+                message:
+                    "当前订阅无法使用该音色" + detail +
+                    "。音色库音色对免费订阅的 API 不开放，请换成菜单里的音色，或升级订阅",
+                troubleshootingLink: "https://elevenlabs.io/app/voice-lab"
+            };
+        // 400：文本超过该模型单次上限，与订阅无关
+        case "max_character_limit_exceeded":
+        case "text_too_long":
+            return { type: "param", message: "文本超过该模型单次字符上限" + detail + "，请分段朗读" };
+        case "invalid_api_key":
+            return {
+                type: "secretKey",
+                message: "API Key 无效" + detail,
+                troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
+            };
+        // 与 invalid_api_key 是两回事：Key 有效但没勾对权限，换 Key 没用
+        case "missing_permissions":
+        case "insufficient_permissions":
+            return {
+                type: "secretKey",
+                message:
+                    "API Key 缺少权限" + detail +
+                    "。ElevenLabs 新建 Key 默认是受限的，请到 elevenlabs.io/app/settings/api-keys 勾选 Text to Speech",
+                troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
+            };
+        case "insufficient_credits":
+            return {
+                type: "api",
+                message: "ElevenLabs 字符额度已用完" + detail,
+                troubleshootingLink: "https://elevenlabs.io/app/subscription"
+            };
+        case "too_many_concurrent_requests":
+        case "concurrent_limit_exceeded":
+            return { type: "api", message: "并发请求超出订阅上限" + detail + "，请稍后重试" };
+        case "system_busy":
+            return { type: "api", message: "ElevenLabs 服务端繁忙" + detail + "，稍后重试即可" };
+        default:
+            break;
+    }
 
     switch (parsed.status) {
         case "quota_exceeded":
@@ -145,7 +195,13 @@ function toServiceError(statusCode, body) {
             troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
         };
     }
-    if (statusCode === 402 || statusCode === 400) {
+    // 400 不能一概而论：voice_does_not_exist 和 max_character_limit_exceeded
+    // 都走 400，含义与订阅毫无关系，必须靠上面的 code/status 分派，落到这里
+    // 只能给中性文案。
+    if (statusCode === 400) {
+        return { type: "param", message: "请求被拒绝" + detail };
+    }
+    if (statusCode === 402) {
         // 判据是音色的来源：音色库（Voice Library）音色对免费订阅的 API 不开放。
         // 分配给账号的 Default/premade 音色不受此限——Roger、Sarah 这些在
         // 2026-03 前注册的账号上是能正常合成的。
@@ -397,7 +453,7 @@ function tts(query, completion) {
             var statusCode = resp.response ? resp.response.statusCode : 0;
             if (statusCode < 200 || statusCode >= 300) {
                 var failure = toServiceError(statusCode, resp.data);
-                if (statusCode === 402 || statusCode === 404) {
+                if (failure.type === "notFound" || statusCode === 402 || statusCode === 404) {
                     // Bob 会保留已保存的选项值，菜单里删掉的旧值依然会被发出去，
                     // 界面上却显示成菜单第一项。把真实 ID 带进报错，避免被界面误导。
                     failure.message += "（实际发出的 Voice ID：" + voiceId +

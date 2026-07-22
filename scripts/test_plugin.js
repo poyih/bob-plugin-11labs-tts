@@ -281,6 +281,18 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error.message.indexOf("hpp4J3VqNfWAUOO0d1Us") > 0 && r.error.message.indexOf("音色菜单") > 0,
         "402 报错里带上实际发出的 Voice ID 及其来源");
 
+    // 15b. 400 + max_character_limit_exceeded 不能说成订阅问题（曾经的 regression）
+    nextResponse = jsonResponse(400, { detail: { status: "max_character_limit_exceeded", message: "too long" } });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("字符上限") > 0,
+        "400 超长文本报 param 而非订阅限制");
+
+    // 15c. 新错误格式用 detail.code 判别（detail.status 已是 legacy）
+    nextResponse = jsonResponse(403, { detail: { code: "insufficient_permissions", type: "authorization_error", message: "no tts scope" } });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "secretKey" && r.error.message.indexOf("缺少权限") > 0,
+        "新格式 detail.code 能被识别，且区分于「Key 无效」");
+
     // 16. 2xx 但返回 JSON —— 上游插件会把它当音频播放
     nextResponse = jsonResponse(200, { detail: { status: "something_odd", message: "not audio" } });
     r = await speak(EN);
