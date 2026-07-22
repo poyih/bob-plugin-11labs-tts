@@ -1,6 +1,6 @@
 {
     "identifier": "com.poyih.bob.plugin.elevenlabs.tts",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "category": "tts",
     "name": "ElevenLabs 语音合成",
     "summary": "使用 ElevenLabs 的高质量 AI 语音朗读文本，支持自定义音色与克隆音色。",
