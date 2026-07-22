@@ -77,7 +77,7 @@ function bodyToObject(body) {
 //   { "detail": [ { "loc": [...], "msg": "..." } ] }      // 422 参数校验
 function parseApiError(body) {
     var obj = bodyToObject(body);
-    var result = { status: "", message: "" };
+    var result = { code: "", status: "", kind: "", requestId: "", message: "" };
     if (!obj) {
         result.message = bodyToText(body).slice(0, 500);
         return result;
@@ -87,6 +87,7 @@ function parseApiError(body) {
     if (typeof detail === "string") {
         result.message = detail;
     } else if (Array.isArray(detail)) {
+        result.kind = "validation_error";
         result.message = detail
             .map(function (item) {
                 return item && (item.msg || item.message);
@@ -94,9 +95,14 @@ function parseApiError(body) {
             .filter(Boolean)
             .join("；");
     } else if (detail && typeof detail === "object") {
-        // ElevenLabs 现行错误格式用 detail.code 判别，detail.status 已被官方标为
-        // legacy 但仍在返回。两套命名空间并存且不互通，所以都要读。
-        result.status = detail.code || detail.status || "";
+        // ElevenLabs 新格式用 detail.code + detail.type，旧格式用 detail.status，两套并存且不互通。
+        // 关键：同一个错误的 code 与 status 可能不同且各自都不可替代——
+        //   192kbps 越档：code=subscription_required、status=output_format_not_allowed
+        //   不支持的语言：code=invalid_parameters、status=unsupported_language
+        // 旧实现用 `code || status` 取一个，会把具体 status 折叠成通用 code，丢掉判别信息。
+        // 所以三个字段都单独留下，分派时按 code 或 status 任一命中。
+        result.code = detail.code || "";
+        result.status = detail.status || "";
         result.kind = detail.type || "";
         result.requestId = detail.request_id || "";
         result.message = detail.message || "";
@@ -113,81 +119,95 @@ function toServiceError(statusCode, body) {
     var parsed = parseApiError(body);
     var detail = parsed.message ? "：" + parsed.message : "";
 
-    switch (parsed.status || parsed.kind) {
-        // 402：免费订阅用音色库音色。真实字符串（旧 status / 新 type 都叫这个）
-        case "payment_required":
-        case "voice_access_denied":
-            return {
-                type: "api",
-                message:
-                    "当前订阅无法使用该音色" + detail +
-                    "。音色库音色对免费订阅的 API 不开放，请换成菜单里的音色，或升级订阅",
-                troubleshootingLink: "https://elevenlabs.io/app/voice-lab"
-            };
-        // 400：文本超过该模型单次上限，与订阅无关
-        case "max_character_limit_exceeded":
-        case "text_too_long":
-            return { type: "param", message: "文本超过该模型单次字符上限" + detail + "，请分段朗读" };
-        case "invalid_api_key":
-            return {
-                type: "secretKey",
-                message: "API Key 无效" + detail,
-                troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
-            };
-        // 与 invalid_api_key 是两回事：Key 有效但没勾对权限，换 Key 没用
-        case "missing_permissions":
-        case "insufficient_permissions":
-            return {
-                type: "secretKey",
-                message:
-                    "API Key 缺少权限" + detail +
-                    "。ElevenLabs 新建 Key 默认是受限的，请到 elevenlabs.io/app/settings/api-keys 勾选 Text to Speech",
-                troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
-            };
-        case "insufficient_credits":
-            return {
-                type: "api",
-                message: "ElevenLabs 字符额度已用完" + detail,
-                troubleshootingLink: "https://elevenlabs.io/app/subscription"
-            };
-        case "too_many_concurrent_requests":
-        case "concurrent_limit_exceeded":
-            return { type: "api", message: "并发请求超出订阅上限" + detail + "，请稍后重试" };
-        case "system_busy":
-            return { type: "api", message: "ElevenLabs 服务端繁忙" + detail + "，稍后重试即可" };
-        default:
-            break;
+    // 命中 code 或 status 任一即算（两套命名空间并存，详见 parseApiError）
+    function has(names) {
+        return names.indexOf(parsed.code) !== -1 || names.indexOf(parsed.status) !== -1;
     }
 
-    switch (parsed.status) {
-        case "quota_exceeded":
-            return {
-                type: "api",
-                message: "ElevenLabs 字符额度已用完" + detail,
-                troubleshootingLink: "https://elevenlabs.io/app/subscription"
-            };
-        case "detected_unusual_activity":
-            return {
-                type: "api",
-                message: "账号被判定为异常活动，免费额度已被暂停" + detail
-            };
-        case "voice_not_found":
-        case "voice_does_not_exist":
-            return {
-                type: "notFound",
-                message: "音色不存在，请检查 Voice ID" + detail
-            };
-        case "invalid_api_key":
-        case "missing_permissions":
-            return {
-                type: "secretKey",
-                message: "API Key 无效或缺少权限" + detail,
-                troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
-            };
-        default:
-            break;
+    // 402：免费订阅用音色库音色。实测真实字符串为 payment_required；voice_access_denied
+    // 与 voice_not_allowed_for_free_users 留作同义兜底（旧版测试见过后者）。
+    if (has(["payment_required", "voice_access_denied", "voice_not_allowed_for_free_users"])) {
+        return {
+            type: "api",
+            message:
+                "当前订阅无法使用该音色" + detail +
+                "。音色库音色对免费订阅的 API 不开放，请换成菜单里的音色，或升级订阅",
+            troubleshootingLink: "https://elevenlabs.io/app/voice-lab"
+        };
+    }
+    // 400：文本超过该模型单次上限，与订阅无关。code=text_too_long / status=max_character_limit_exceeded
+    if (has(["max_character_limit_exceeded", "text_too_long"])) {
+        return { type: "param", message: "文本超过该模型单次字符上限" + detail + "，请分段朗读" };
+    }
+    // 音色不存在
+    if (has(["voice_not_found", "voice_does_not_exist"])) {
+        return { type: "notFound", message: "音色不存在，请检查 Voice ID" + detail };
+    }
+    // 模型不存在（实测 400 + status=model_not_found，旧格式只带 status 不带 code）
+    if (has(["model_not_found"])) {
+        return { type: "param", message: "模型不存在，请在插件设置里检查模型选择" + detail };
+    }
+    // 音频格式需要更高订阅档：192kbps 需 Creator+。实测 403，code=subscription_required、
+    // status=output_format_not_allowed。曾经落到下面 401/403 兜底被误报成「Key 无效」，必须前置拦截。
+    if (has(["output_format_not_allowed", "subscription_required"])) {
+        return {
+            type: "param",
+            message: "该音频格式需要 Creator 及以上订阅" + detail + "，请在设置里换一个格式",
+            troubleshootingLink: "https://elevenlabs.io/app/subscription"
+        };
+    }
+    // 音频格式不被支持（自定义格式写错等）。实测 403 + code=status=invalid_output_format
+    if (has(["invalid_output_format"])) {
+        return { type: "param", message: "音频格式不被支持" + detail };
+    }
+    // 当前模型不支持该 language_code。插件已按模型语言集门控，正常不会触发，留作兜底。
+    // 实测 400，code=invalid_parameters、status=unsupported_language（code 是通用值，靠 status 分派）。
+    if (has(["unsupported_language"])) {
+        return { type: "param", message: "当前模型不支持该语言的 language_code" + detail };
+    }
+    // voice_settings 越界（菜单已限定合法区间，兜底）。实测 speed=2.0 → 400 + invalid_voice_settings
+    if (has(["invalid_voice_settings"])) {
+        return { type: "param", message: "音色参数越界" + detail };
+    }
+    // API Key 无效
+    if (has(["invalid_api_key"])) {
+        return {
+            type: "secretKey",
+            message: "API Key 无效" + detail,
+            troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
+        };
+    }
+    // 与 invalid_api_key 是两回事：Key 有效但没勾对权限，换 Key 没用。
+    // 旧格式 401 + missing_permissions，新格式 403 + insufficient_permissions。
+    if (has(["missing_permissions", "insufficient_permissions"])) {
+        return {
+            type: "secretKey",
+            message:
+                "API Key 缺少权限" + detail +
+                "。ElevenLabs 新建 Key 默认是受限的，请到 elevenlabs.io/app/settings/api-keys 勾选 Text to Speech",
+            troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
+        };
+    }
+    // 额度用完（insufficient_credits 新码 / quota_exceeded 旧码）
+    if (has(["insufficient_credits", "quota_exceeded"])) {
+        return {
+            type: "api",
+            message: "ElevenLabs 字符额度已用完" + detail,
+            troubleshootingLink: "https://elevenlabs.io/app/subscription"
+        };
+    }
+    if (has(["too_many_concurrent_requests", "concurrent_limit_exceeded"])) {
+        return { type: "api", message: "并发请求超出订阅上限" + detail + "，请稍后重试" };
+    }
+    if (has(["system_busy"])) {
+        return { type: "api", message: "ElevenLabs 服务端繁忙" + detail + "，稍后重试即可" };
+    }
+    if (has(["detected_unusual_activity"])) {
+        return { type: "api", message: "账号被判定为异常活动，免费额度已被暂停" + detail };
     }
 
+    // 状态码兜底：上面的 code/status 命中失败时才走这里。401/403 落到这通常是
+    // Key/权限问题（输出格式、缺权限这类已知 403 已被前置拦截）。
     if (statusCode === 401 || statusCode === 403) {
         return {
             type: "secretKey",
@@ -195,16 +215,13 @@ function toServiceError(statusCode, body) {
             troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
         };
     }
-    // 400 不能一概而论：voice_does_not_exist 和 max_character_limit_exceeded
-    // 都走 400，含义与订阅毫无关系，必须靠上面的 code/status 分派，落到这里
-    // 只能给中性文案。
+    // 400 不能一概而论：voice_not_found、max_character_limit_exceeded、unsupported_language
+    // 都走 400，含义各异，必须靠上面的 code/status 分派，落到这里只给中性文案。
     if (statusCode === 400) {
         return { type: "param", message: "请求被拒绝" + detail };
     }
     if (statusCode === 402) {
         // 判据是音色的来源：音色库（Voice Library）音色对免费订阅的 API 不开放。
-        // 分配给账号的 Default/premade 音色不受此限——Roger、Sarah 这些在
-        // 2026-03 前注册的账号上是能正常合成的。
         return {
             type: "api",
             message:
@@ -230,6 +247,22 @@ function toServiceError(statusCode, body) {
 
 function modelInfo(modelId) {
     return config.MODELS[modelId] || config.FALLBACK_MODEL;
+}
+
+// troubleshootingLink 经真机确认在 Bob 的 tts 报错弹窗里只渲染成纯文本（URL 能看见但不可点）。
+// 为防止任何情况下用户看不到自救地址，把 troubleshootingLink 的 URL 明文追加进 message；
+// message 里已经含该地址（如缺权限那条）则不重复。
+function ensureLinkVisible(err) {
+    if (!err || !err.troubleshootingLink || !err.message) {
+        return err;
+    }
+    var link = err.troubleshootingLink;
+    var probe = link.replace(/^https?:\/\//, "");
+    if (err.message.indexOf(link) !== -1 || err.message.indexOf(probe) !== -1) {
+        return err;
+    }
+    err.message = err.message + "（详见 " + link + "）";
+    return err;
 }
 
 // 菜单里代表「用下面填的 Voice ID」的哨兵值
@@ -332,7 +365,30 @@ function pluginValidate(completion) {
                 return;
             }
 
-            completion({ result: false, error: toServiceError(statusCode, resp.data) });
+            // 受限 Key 打 /models 会因缺读权限而 401/403，但这不代表 TTS 不能用——
+            // 新建 Key 默认只勾 Text to Speech 是官方默认路径，正是 HANDOFF 里 P0#3 的误报来源。
+            // 不存在「免权限」的探测端点，所以把缺权限判为通过（TTS 通常仍可用），只有
+            // invalid_api_key 才判失败。注：Bob 在 result:true 时一般不展示 error 字段，
+            // 提示另写一行日志留档。
+            var parsed = parseApiError(resp.data);
+            var permDenied =
+                ["missing_permissions", "insufficient_permissions"].indexOf(parsed.code) !== -1 ||
+                ["missing_permissions", "insufficient_permissions"].indexOf(parsed.status) !== -1;
+            if (permDenied) {
+                logInfo("validate 受限通过：Key 缺读取权限（不影响朗读），HTTP " + statusCode);
+                completion({
+                    result: true,
+                    error: {
+                        type: "secretKey",
+                        message: "API Key 可用，但缺少读取权限（不影响朗读）"
+                    }
+                });
+                return;
+            }
+
+            var failure = toServiceError(statusCode, resp.data);
+            ensureLinkVisible(failure);
+            completion({ result: false, error: failure });
         } catch (err) {
             completion({
                 result: false,
@@ -397,9 +453,11 @@ function tts(query, completion) {
 
             var body = { text: text, model_id: modelId };
 
-            // multilingual_v2 明确不支持 language_code，其余模型不支持时会被忽略
+            // 只下发该模型确实支持的 language_code：模型对支持列表外的 code 直接回
+            // 400 unsupported_language（实测，非文档所说的「忽略」），所以按模型语言集门控；
+            // 不支持的就不下发，让模型自行识别（实测 flash_v2 + 中文不带 code 仍能合成）。
             var languageCode = config.langMap.get(query.lang);
-            if (info.languageCode && languageCode) {
+            if (languageCode && config.modelAcceptsLanguage(modelId, languageCode)) {
                 body.language_code = languageCode;
             }
 
@@ -499,6 +557,7 @@ function tts(query, completion) {
                 }
             });
         } catch (err) {
+            ensureLinkVisible(err);
             logInfo("error type=" + (err.type || "unknown") + " message=" + (err.message || ""));
             completion({
                 error: {

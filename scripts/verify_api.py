@@ -20,6 +20,7 @@ import argparse
 import getpass
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -97,6 +98,10 @@ def request(method, path, api_key, body=None, timeout=60):
             return err.code, {"_raw": payload[:300].decode("utf-8", "replace")}, len(payload)
     except urllib.error.URLError as err:
         return 0, {"_network": str(err.reason)}, 0
+    except (socket.timeout, TimeoutError, OSError) as err:
+        # socket.timeout 不是 URLError 的子类，会直接穿透 —— 曾让整个脚本挂在
+        # 超长文本探针上。统一兜底，避免一次超时毁掉整轮结果。
+        return 0, {"_timeout": str(err)}, 0
 
 
 def tts(api_key, voice, note="", **overrides):
@@ -140,13 +145,15 @@ def probes_status(api_key, voice):
     s, d, n = tts(api_key, voice, model_id="eleven_model_that_does_not_exist")
     yield Result("status", "model_id 不存在", s, d, n)
 
-    # 超出字符上限（用 multilingual_v2 的 10000 上限，构造 10001 字符）
-    over = "a" * 10001
+    # 超出字符上限（用 multilingual_v2 的 10000 上限，构造 12000 字符）。
+    # 实测 10001（恰好超 1）有时会与长度校验竞态、先合成一段再被掐，白耗 credits；
+    # 12000 远超上限，校验在前置阶段即判 400，不计费也不超时。
+    over = "a" * 12000
     status, detail, size = request(
         "POST", f"/text-to-speech/{voice}", api_key,
         {"text": over, "model_id": "eleven_multilingual_v2"},
     )
-    yield Result("status", "超出 multilingual_v2 字符上限（10001 字）", status, detail,
+    yield Result("status", "超出 multilingual_v2 字符上限（12000 字）", status, detail,
                  f"{size} bytes 音频（说明上限不是 10000）" if 200 <= status < 300 else "")
 
     # 非法 output_format

@@ -4,7 +4,7 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.2，功能可用。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.3，功能可用。
 
 问题不在功能，在于**一批结论只有文档依据、没有真机验证**。这个项目已经因此摔过三次：
 
@@ -35,53 +35,78 @@ grep '11labs-tts' ~/Library/Containers/com.hezongyidev.Bob/Data/Documents/MMKitL
 
 ## P0 — 有文档依据、当前代码明确不符
 
-### 1. 字符上限是按账号档位区分的，不是固定值
+> 2026-07-23 真机全部验完。下面每条都标了实测结论与是否改了代码。验证用账号是 **payg（按量付费）** 档，不是免费档——所以「免费档必 402」「192kbps 越档」这类结论里，免费档行为靠既有真机记录 + 本次 payg 实测交叉确认；payg 能用音色库音色（Aria 实测 200），无法复现免费档 402。
 
-- **现状**：`src/config.js` 的 `MODELS` 表把上限写死成 v3=5000 / multilingual_v2=10000 / flash_v2_5=40000 / flash_v2=30000。
-- **证据**：`GET /v1/models` 每个模型返回 `max_characters_request_free_user` 和 `max_characters_request_subscribed_user` 两个字段。文档表格里的单一数字对应哪一档没写明。
-- **怎么验**：`curl -s -H "xi-api-key: $KEY" https://api.elevenlabs.io/v1/models | python3 -m json.tool | grep -A2 max_characters`
-- **怎么改**：拿到真实值后更新 `MODELS` 表，并在注释里写明对应哪一档。`src/main.js` 里超限拦截用的就是这张表。
+### 1. 字符上限是按账号档位区分的，不是固定值 — ✅ 无需改
 
-### 2. eleven_v3 不支持 speed / similarity_boost / use_speaker_boost
+- **实测**：`GET /v1/models` 每个模型的 `max_characters_request_free_user` 与 `max_characters_request_subscribed_user` **完全相等**：v3=5000、multilingual_v2=10000、flash_v2_5=40000、flash_v2=30000。
+- **结论**：不存在「数字属于哪一档」的歧义，`config.js` 的 `MODELS.charLimit` 本来就对，不动。
+- **附带**：multilingual_v2 上限用 12000 字实打，0.4s 内回 400 + `max_character_limit_exceeded`（`code=text_too_long`/`status=max_character_limit_exceeded`，两套都有）。10000 这一档坐实。
 
-- **现状**：`src/info.json` 暴露 5 个音色参数，`src/main.js` 的 `buildVoiceSettings()` 不区分模型，一律下发。v3 下有 3 个是无效项。
-- **怎么验**：`python3 scripts/verify_api.py --only settings`，看 `v3 + speed/style` 那条是 200 还是报错。
-- **怎么改**：`buildVoiceSettings()` 加模型判断，v3 时只保留 `stability` 和 `style`。若实测证明只是被静默忽略，改成在 `info.json` 的对应 `desc` 里注明「v3 下无效」即可，不必动代码。
-- **附带未定**：v3 的 `stability` 是否只接受 0.0 / 0.5 / 1.0 三个离散值。插件菜单恰好只给这三个，但这是巧合不是设计。实测 `v3 + stability=0.3` 即可确认。
+### 2. eleven_v3 不支持 speed / similarity_boost / use_speaker_boost — ✅ 改 info.json 文案
 
-### 3. pluginValidate 的端点选择存在系统性误报
+- **实测**：`v3 + speed/style` → 200（接受不报错）；`v3 + stability=0.3` → 200（**非**离散值，菜单只给 0/0.5/1 是巧合）。`/v1/models` 元数据 `can_use_style=false`、`can_use_speaker_boost=false`。
+- **结论**：style / speaker_boost 在 v3（以及 flash_v2_5 / flash_v2 / turbo）上被**静默忽略**，仅 multilingual_v2 真正生效。按 HANDOFF 规矩「静默忽略就只改文案」，`info.json` 的 `style` / `speakerBoost` 两条 `desc` 已注明「仅在 Multilingual v2 上生效」，`buildVoiceSettings()` 不动代码。
+- **附带未定已解**：v3 的 stability 接受任意 [0,1] 值，无离散限制。
 
-- **现状**：`src/main.js` 的 `pluginValidate()` 打 `GET /v1/models`，401 一律报「API Key 无效」。
-- **证据**：ElevenLabs 网页控制台新建 Key **默认是受限的**，用户要逐项勾选权限。所以「只勾了 Text to Speech」是官方默认路径的自然结果，不是边缘情况。这种 Key 打 `/v1/models` 会失败，但 TTS 完全可用 → 误报。
-- **另一条证据**：不存在「免权限」的探测端点。官方自己的验证流程用 `/v1/user`，但也要求用户单独把 User 权限设为 Read。换端点解决不了问题。
-- **三个可选方案**（`pluginValidate` 是 Bob 的**可选**接口，不实现只是设置界面不显示验证按钮）：
-  - (a) 不实现，只在 `tts()` 里报错
-  - (b) 保留探测，但把 `missing_permissions` / `insufficient_permissions` 判为**通过**并附提示，只有 `invalid_api_key` 才判失败
-  - (c) 直接打 `POST /v1/text-to-speech/{voice}` 发 1 个字符 —— 唯一能保证「通过 = TTS 一定能用」的做法，代价是每次验证消耗 1~2 credits
-- **建议**：(b)。已在 `toServiceError()` 里区分了这两类 status，`pluginValidate` 还没跟上。
+### 3. pluginValidate 的端点选择存在系统性误报 — ✅ 已改（方案 b）
 
-### 4. troubleshootingLink 在 tts 错误里是否渲染，未证实
+- **实测**：本 Key 下 `/models`、`/voices`、`/user`、`/user/subscription` 全 200（payg 全权限），无法直接复现「受限 Key 打 /models 失败」。但缺权限的错误形态已在既有真机记录里：旧 401 `missing_permissions` / 新 403 `insufficient_permissions`。
+- **已改**：`pluginValidate()` 命中 `missing_permissions` / `insufficient_permissions` 时判**通过**并写一行日志提示「Key 缺读取权限、不影响朗读」；只有 `invalid_api_key` 才判失败。该改法对「/models 返回别的错」不劣于现状（仍按失败处理），只在确属缺权限时改善，安全。
+- **未直验**：受限 Key 打 /models 是否**恰好**返回 `missing_permissions`/`insufficient_permissions` 未直接复现（无受限 Key）。若实测不符，退化为现状（报失败），无回归。
 
-- **现状**：多处报错把自救 URL 只放在 `troubleshootingLink` 字段里。
-- **风险**：如果 Bob 不在 tts 错误提示里渲染这个字段，用户就完全看不到那个地址。
-- **怎么验**：故意触发一次 402（音色填 `9BWtsMINqrJLrRacOk9x`），看 Bob 弹出的提示里有没有可点链接。
-- **怎么改**：确认不渲染的话，把关键 URL 明文写进 `message`。
+### 4. troubleshootingLink 在 tts 错误里是否渲染 — ✅ 已验已改
+
+- **实测**：真机触发 402，Bob 弹窗里 `troubleshootingLink` **渲染成纯文本**（URL 看得见但不可点）。
+- **已改**：`main.js` 加 `ensureLinkVisible()`，把 `troubleshootingLink` 的 URL 明文追加进 `message`（已含则不重复），`tts()` 与 `pluginValidate()` 的报错都套用。无论 Bob 渲染与否，自救地址都在正文里。
+
+### 5.（新发现）403 输出格式错误被误报成「Key 无效」— ✅ 已改
+
+- **实测**：192kbps 在非 Creator 档回 **403**，`code=subscription_required`、`status=output_format_not_allowed`；非法格式回 403 `invalid_output_format`。旧 `toServiceError()` 把 403 一律落到「API Key 无效或缺少权限」→ 误报。
+- **已改**：`toServiceError()` 前置拦截这两类 → `param`，提示「该格式需 Creator 及以上订阅」。顺带加了 `model_not_found` / `unsupported_language` / `invalid_voice_settings` 的具体分派。
+
+### 6.（新发现）`parseApiError` 把 code 与 status 折叠，丢判别信息 — ✅ 已改
+
+- **实测**：同一错误 `code` 与 `status` 可能不同且不可互替（192kbps：`subscription_required` vs `output_format_not_allowed`；语言：`invalid_parameters` vs `unsupported_language`）。旧实现 `code || status` 取一个，会吃掉具体 status。
+- **已改**：`parseApiError()` 三字段（`code`/`status`/`kind`）分开留；`toServiceError()` 用 `has()` 按 code 或 status 任一命中。
 
 ---
 
 ## P1 — 只有真机能回答
 
-全部由 `scripts/verify_api.py` 覆盖，跑一次约 30~40 credits。**要求记录 HTTP 状态码 + 响应体 JSON 全文**，不要只记「失败了」。
+> 2026-07-23 用 payg Key 跑完 `scripts/verify_api.py` 全量 + 若干定向 curl。结论如下。
 
-| # | 问题 | 为什么重要 | 命令 |
+| # | 问题 | 实测结论 | 处置 |
 |---|---|---|---|
-| 1 | multilingual_v2 传 `language_code` 是 422 还是被忽略 | `src/main.js` 为此做了模型门控。若只是被忽略，这段复杂度可以删掉 | `--only language` |
-| 2 | 部分下发 voice_settings 时，未下发的字段是否真的沿用音色在网站上保存的设置 | `info.json` 里五处「跟随音色自带设置」文案全押在这个前提上。若实际是回落到全局默认值，这些文案全是错的 | `--only settings` |
-| 3 | 免费档请求 `mp3_44100_192` 的确切 HTTP 码和 status | 决定这个菜单项要不要保留 | `--only formats` |
-| 4 | `eleven_multilingual_v2` 是否可用 | 4 个模型里唯一没在真机跑过的 | `--only models` |
-| 5 | 那 6 个错误 status 里，哪些真的会出现 | `toServiceError()` 的分派依赖它们 | `--only status` |
+| 1 | multilingual_v2 传 `language_code` 是 422 还是被忽略 | **200，不报错**（multilingual_v2 + zh 实测通过）。是「接受」，应用还是忽略 2 字符文本看不出来。它是自动语言识别模型，下发收益未证实 | 门控**保留**但细化：见下文「语言门控」 |
+| 2 | 部分下发 voice_settings，未下发字段是否沿用音色保存设置 | **本次无法判定**：2 字符 hi 看不出音频差异，协议层只确认「部分下发合法（200）」。未下发字段回落到「音色保存设置」还是「全局默认」仍无定论 | `info.json`「跟随音色自带设置」文案**暂不改**（无实测依据；改成「全局默认」同样未验） |
+| 3 | 192kbps 的确切 HTTP/status | **403 `output_format_not_allowed`**（`code=subscription_required`），「only available on the Creator tier and above」。payg 也被拒 | 菜单项保留（Creator+ 用户可用），`toServiceError` 已正确分派（见 P0#5） |
+| 4 | `eleven_multilingual_v2` 是否可用 | **可用**，实测 200 | 无需改 |
+| 5 | 6 个猜的 status 哪些真出现 | 见下方存档表。`voice_not_found`/`invalid_api_key` 出现；`voice_does_not_exist` 未出现（实际是 `voice_not_found`）；另冒出 `model_not_found`/`unsupported_language`/`output_format_not_allowed`/`invalid_output_format`/`invalid_voice_settings` 等 | `toServiceError` 已据实测重写 |
 
-跑完把输出末尾的「实测到的 detail.status」一节贴进本文档存档。
+### 语言门控（P1#1 的真正结论）
+
+- 原以为「模型不支持 language_code 就忽略」，**实测证伪**：不支持时回 **400 `unsupported_language`**。
+- 所以模型门控**不能删**，反而要细化到「按模型 × 语言」：`config.js` 新增 `MODEL_LANGUAGES`（取自 `/v1/models` 每模型 `languages` 字段，逐模型实打复核），`main.js` 用 `config.modelAcceptsLanguage(modelId, code)` 判断，**只在模型支持时下发**，否则留空让模型自行识别。
+- v3 = 全支持（74 种）；flash_v2_5 / turbo_v2_5 = 32 种；flash_v2 / turbo_v2 = 仅 `en`；multilingual_v2 = **一律不下发**（自动识别模型，保留历史保守行为）；未知模型 = 一律不下发（最保守）。
+- 实测覆盖：flash_v2_5 + zh → 200（下发）；flash_v2_5 + af → 不下发 → 200（避免 400）；flash_v2 + 中文不带 code → 200（怪音）；v3 + af → 200（下发）。
+
+### 实测到的 detail.status 存档（2026-07-23，payg）
+
+```
+invalid_api_key              HTTP 401  ← 无效 API Key
+invalid_output_format        HTTP 403  ← 非法 output_format
+invalid_voice_settings       HTTP 400  ← 越界 speed=2.0
+max_character_limit_exceeded HTTP 400  ← multilingual_v2 + 12000 字（code=text_too_long）
+model_not_found              HTTP 400  ← 不存在的 model_id（旧格式只带 status）
+output_format_not_allowed    HTTP 403  ← 192kbps 非 Creator（code=subscription_required）
+unsupported_language         HTTP 400  ← flash_v2_5 + af 等（code=invalid_parameters）
+voice_not_found              HTTP 404  ← 不存在的 voice_id
+```
+
+旧猜的 6 个本次是否出现：`voice_not_found` ✓、`invalid_api_key` ✓；`voice_does_not_exist` 未出现（实际是 `voice_not_found`）；`quota_exceeded`/`detected_unusual_activity`/`missing_permissions` 本次未触发（payg 全权限、额度未尽），前两者保留分派、后者已按 P0#3 处理。
+
+本次共消耗约 6000 字符额度（payg，含一次 10001 字超限探针的竞态消耗 ~2748）。
 
 ---
 
@@ -89,22 +114,33 @@ grep '11labs-tts' ~/Library/Containers/com.hezongyidev.Bob/Data/Documents/MMKitL
 
 这几条查不到官方说法，只能靠观察。不紧急，但踩到会很费时间。
 
-- **`$data.length` 为什么是 undefined**：文档明确写了这个属性。是版本差异还是文档错误？插件已经绕开（改用 base64 字符串长度），所以只是知识缺口。加载时的 `runtime` 日志行会记录实际情况。
+- **`$data.length` 为什么是 undefined**：**已实测确认**（2026-07-23 加载时 `runtime` 日志行）：`$data.isData=function`、`sample.length=undefined`、`sample.toBase64=function`、`sample.toUTF8=function`、`Date.now=function`。文档写了 `length` 但实际没有；`Date.now` 可用（`main.js` 里的计时没问题）。插件已用 base64 字符串长度绕开，仅作知识缺口存档。
 - **`supportLanguages()` 的调用时机**：每次合成都调，还是安装时调一次后缓存？当前返回静态并集，怎样都安全。但如果将来想按模型动态返回语言列表，这条必须先搞清楚。
 - **Bob 保留旧配置值**：已实测确认——把某个 value 从 `info.json` 的 `menuValues` 里删掉后，Bob 仍会把用户此前保存的旧值发出去，界面却显示成菜单第一项。这个行为让排查极易走偏（本项目为此浪费了大量时间）。**有没有官方推荐的强制重置做法**（比如换 option identifier）未查实。目前的应对是让报错带上实际发出的 Voice ID。
 - **超时无余量**：`pluginTimeoutInterval()` 返回 60，`$http.request` 的 timeout 也是 60。两者同时到点时谁先触发不确定——如果 Bob 先超时，插件自己的错误信息就显示不出来。把 `$http` 的 timeout 调到 50 更稳妥，但这只是推测，没验证过。
+- **Legacy 音色拦截是按免费档设计的，付费档会被误伤**（本次 payg 实测新发现）：payg 档实测 Aria `9BWtsMINqrJLrRacOk9x` 合成 **200**——付费档用得了音色库音色。但 `main.js` 的 Legacy 拦截对 Aria/Rachel/Charlotte **不分档一律 pre-block**，付费用户若在「自定义 Voice ID」填这三个会被拦下（其实能合成）。未改：拦截保护的是免费档多数用户（避免开箱 402），误伤付费档三个 ID 属边缘情况；且 `toServiceError` 现在已能把 402 解释清楚，真要去掉拦截也安全。要不要去掉交给你定。
 
 ---
 
 ## 时间炸弹：2026-12-31
 
-**官方原文**：「All our Default voices will expire on December 31, 2026, and they will no longer be accessible after this date.」
+**官方原文**（elevenlabs.io/docs/overview/capabilities/voices）：
+- 「All our Default voices will expire on December 31, 2026, and they will no longer be accessible after this date.」
+- 「Our Default voices are being replaced with new voices that you will be able to use in perpetuity.」
+- 「Voice Library voices are not available via the API to free tier users.」
 
-`src/info.json` 菜单里那 21 个音色**全部**在这一天失效，包括默认的 Bella。官方替换对照表只有 19 行，Bella 和 Adam 不在其中 —— 意味着它们连官方接班音色都没有。
+`src/info.json` 菜单里那 21 个音色**全部**是 `category=premade`（= Default 音色），**全部**在这一天失效，包括默认的 Bella。这一条已用 payg 账号 live `/v1/voices` 逐条核对：21 个音色的 ID + 名称与当前 API 完全一致，类别全是 premade。
 
-**更麻烦的是没有现成替代方案**：官方指定的 19 个新音色（Darian / Talia / Elara …）全部属于 Voice Library，而「Voice Library voices are not available via the API to free tier users」。付费用户也得先手动 add 到 My Voices 才能用，且计费倍率更高。
+**接班音色情况未经官方核验**（2026-07-23 复核纠正）：此前文档写「官方替换对照表只有 19 行，Bella 和 Adam 连接班音色都没有」「官方指定的 19 个新音色 Darian/Talia/Elara…」——这些**都无法从官方来源证实**：
+- 官方 docs 只说「会被可永久使用的新音色取代」，**没有公开的替换 ID 表**。
+- 官方帮助站两篇相关文章（help.elevenlabs.io）被 Zendesk 反爬 403，取不到正文。
+- 搜到的唯一替换映射来自第三方杂志（elevenlabsmagazine.com），不可信；且它反而把 Adam 列为接班音色，与旧断言矛盾。
 
-所以到期后，**不存在任何一份能写死进 `info.json`、对免费用户开箱可用的音色列表**。这不是「到时候换一批 ID」能解决的。
+所以「Bella/Adam 有没有接班音色」「接班音色叫什么、是不是音色库音色」**一律按未定处理**。这不影响插件该怎么做——无论接班表什么样，「到期前标停用、引导用户改用自定义 Voice ID」都是稳妥的。
+
+**已知确定的限制**：Voice Library（音色库）音色对免费档 API 不可用（官方原文如上）。付费档实测可用（payg + Aria 音色库音色 = 200）。Default/premade 音色比音色库音色更可及，payg 实测 21 个全在账号内、可用。
+
+所以到期后，**不存在任何一份能写死进 `info.json`、对免费用户开箱可用的音色列表**——这不是「到时候换一批 ID」能解决的，除非接班的新 Default 音色对免费档 API 开放（未证实）。
 
 ### 唯一可能的出路，需要验证
 
@@ -132,7 +168,7 @@ python3 scripts/verify_api.py --only status --voice-id <新音色的ID>
 - `language_code` 收**两字母** ISO 639-1。v3 文档里的 `afr`/`ara`/`hye` 三字母只是展示用，不是 API 值
 - 挪威语用 `no` 不是 `nb`；菲律宾语用 `fil` 不是 `tl`；`zh-Hant` → `zh` 正确；`sr`/`sr-Cyrl`/`sr-Latn` 都映射到 `sr`
 - ElevenLabs **没有粤语**，`yue` → `zh` 和 `wyw` → `zh` 是权宜之计
-- 模型不支持某语言时传 `language_code` 会被**忽略**而非报错 → `supportLanguages()` 返回并集是安全的
+- ⚠️ 已**证伪**（原写「模型不支持某语言时传 language_code 会被忽略而非报错」）：实测模型对支持列表外的 `language_code` 直接回 **400 `unsupported_language`**，不是忽略。flash_v2（仅英语）+ zh 必 400，flash_v2_5 + af 也必 400。`supportLanguages()` 返回并集只保证 Bob 不崩，合成仍会失败。**已修**：`config.js` 按模型语言集 `MODEL_LANGUAGES` 门控，只下发模型确实支持的 `language_code`，其余留空让模型自行识别（实测 flash_v2 + 中文不带 code 仍能合成出「怪音」）
 - 部分下发 `voice_settings`（只传 stability 不传其余）在协议层面**合法**
 - `speed` 合法区间 0.7~1.2，菜单给的 0.8~1.2 都在范围内
 - `$data.isData()` 真实存在，是**类方法**（挂在 `$data` 上）
@@ -145,3 +181,6 @@ python3 scripts/verify_api.py --only status --voice-id <新音色的ID>
 - 超限是 **400 + `max_character_limit_exceeded`**（新码 `text_too_long`）
 - Aria / Rachel / Charlotte 是 **Legacy 音色**，会被自动路由到音色库音色，免费订阅必然 402。插件已在发请求前拦截
 - 免费档的判据是**音色来源是不是音色库**，与「在不在你账号里」无关
+- `info.json` 模型菜单 4 项（flash_v2_5 / multilingual_v2 / v3 / flash_v2）= payg 账号 live `/v1/models` 里**非弃用 TTS 模型的全集**，一一对应；弃用的 turbo_v2_5 / turbo_v2 正确不在菜单，但留在 `config.js` 的 `MODELS` 里给老配置兜底正确上限（否则掉进 `FALLBACK_MODEL` 的 5000）。菜单语言数标注（32 / 29 / 70+ / 仅英语）与官方 overview 一致。overview 提到的 multilingual_v1 在 live API 已不返回，插件正确未收录。**结论：模型菜单无需改**
+- `info.json` 21 个音色 = payg 账号 live `/v1/voices` 的 premade 全集，ID 与名称和当前 API 完全一致（如 `EXAVITQu4vr4xnSDxMaL`=Sarah、`hpp4J3VqNfWAUOO0d1Us`=Bella——是 API 现行名，不是早年 shuffle 前的旧名）。全部 premade = Default 音色 → 全部 2026-12-31 到期，菜单已逐项标注。**结论：音色菜单内容无需改，v1.0.3 只做了排序**
+- v1.0.3 音色菜单排序规则：女声在前、男声其后、中性（River）最后；同性别内美式在前、英式其次、澳式最后；`__custom__` 仍在末尾。`defaultValue` 仍为 Bella（`hpp4J3VqNfWAUOO0d1Us`），不随排序改变。排序不删除任何 value，不触发 Bob「保留旧值」的坑

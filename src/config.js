@@ -5,22 +5,66 @@
 
 var API_BASE = "https://api.elevenlabs.io/v1";
 
-// 单次请求字符上限与 language_code 支持情况。
-// 出处：https://elevenlabs.io/docs/overview/models（Character limits 一节）
-// language_code 官方说明：模型不支持时会被忽略，但 multilingual_v2 明确「不支持该参数」，
-// 所以只对确认可用的模型下发。
+// 单次请求字符上限。
+// 出处：GET /v1/models 每个模型的 max_characters_request_free_user /
+// max_characters_request_subscribed_user（2026-07-23 真机拉取）。
+// 关键：两个字段对每个模型都相等——同一个上限不区分免费/订阅档，所以这张表不存在
+// 「数字属于哪一档」的歧义，直接照搬即可。multilingual_v2=10000 这一档还用 12000 字
+// 实打过，确认在 0.4s 内回 400 + max_character_limit_exceeded。
 var MODELS = {
-    eleven_v3: { charLimit: 5000, languageCode: true },
-    eleven_multilingual_v2: { charLimit: 10000, languageCode: false },
-    eleven_flash_v2_5: { charLimit: 40000, languageCode: true },
-    eleven_flash_v2: { charLimit: 30000, languageCode: true, englishOnly: true },
+    eleven_v3: { charLimit: 5000 },
+    eleven_multilingual_v2: { charLimit: 10000 },
+    eleven_flash_v2_5: { charLimit: 40000 },
+    eleven_flash_v2: { charLimit: 30000, englishOnly: true },
     // 已被 ElevenLabs 标记为 deprecated，保留只为兼容老配置
-    eleven_turbo_v2_5: { charLimit: 40000, languageCode: true },
-    eleven_turbo_v2: { charLimit: 30000, languageCode: true, englishOnly: true }
+    eleven_turbo_v2_5: { charLimit: 40000 },
+    eleven_turbo_v2: { charLimit: 30000, englishOnly: true }
 };
 
 // 菜单里没有的模型（比如用户手填了新模型 ID）走这套保守默认值
-var FALLBACK_MODEL = { charLimit: 5000, languageCode: false };
+var FALLBACK_MODEL = { charLimit: 5000 };
+
+// 每个模型「原生支持、可安全下发 language_code」的 ISO 639-1 集合。
+// 出处：GET /v1/models 每个模型的 languages 字段（2026-07-23 真机拉取，逐模型实打复核）。
+//
+// 为什么要按模型按语言门控：实测 ElevenLabs 对「不在该模型支持列表里」的 language_code
+// 直接回 400 unsupported_language，而**不是**文档/旧结论所说的「被忽略」。曾经据此以为
+// 「supportLanguages 返回并集也安全」，其实不然——flash_v2（仅英语）+ zh 必 400，
+// flash_v2_5 + af（Afrikaans）也必 400。所以只能下发模型确实支持的语言，其余留空让模型
+// 自己识别（实测 flash_v2 + 中文不带 language_code 仍能合成出「怪音」，不会报错）。
+//
+// null   = 插件用到的语言它全支持（v3 实测 74 种全覆盖，含 af/hy/ceb 等）。
+// []     = 一律不下发 language_code。multilingual_v2 是自动语言识别模型，官方称不读
+//          language_code，下发收益未证实且可能强制语种、误读跨语言文本，保留历史保守行为。
+var MODEL_LANGUAGES = {
+    eleven_v3: null,
+    eleven_multilingual_v2: [],
+    eleven_flash_v2_5: [
+        "ar", "bg", "cs", "da", "de", "el", "en", "es", "fi", "fil", "fr", "hi",
+        "hr", "hu", "id", "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ro",
+        "ru", "sk", "sv", "ta", "tr", "uk", "vi", "zh"
+    ],
+    eleven_flash_v2: ["en"],
+    // turbo 已 deprecated，语言集与同名 flash 一致
+    eleven_turbo_v2_5: [
+        "ar", "bg", "cs", "da", "de", "el", "en", "es", "fi", "fil", "fr", "hi",
+        "hr", "hu", "id", "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ro",
+        "ru", "sk", "sv", "ta", "tr", "uk", "vi", "zh"
+    ],
+    eleven_turbo_v2: ["en"]
+};
+
+// 某模型是否应下发该 language_code。未知模型保守不下发（让模型自行识别，绝不触发 400）。
+function modelAcceptsLanguage(modelId, code) {
+    var langs = MODEL_LANGUAGES[modelId];
+    if (langs === undefined) {
+        return false;
+    }
+    if (langs === null) {
+        return true;
+    }
+    return langs.indexOf(code) !== -1;
+}
 
 // Bob 语言代码 -> ElevenLabs 的 ISO 639-1 代码。
 // tier 表示「最低要哪一档模型才原生支持」：
@@ -135,3 +179,5 @@ exports.FALLBACK_MODEL = FALLBACK_MODEL;
 exports.LANGUAGES = LANGUAGES;
 exports.LEGACY_VOICES = LEGACY_VOICES;
 exports.langMap = langMap;
+exports.MODEL_LANGUAGES = MODEL_LANGUAGES;
+exports.modelAcceptsLanguage = modelAcceptsLanguage;

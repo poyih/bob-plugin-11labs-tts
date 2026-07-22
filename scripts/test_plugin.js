@@ -328,6 +328,79 @@ var EN = { text: "hello world", lang: "en" };
     });
     ok(v.result === false && v.error.type === "secretKey", "pluginValidate 在 401 时报 secretKey");
 
+    // 19. language_code 按模型语言集门控（实测：模型对支持列表外的 code 回 400，而非「忽略」）
+    withOptions({ model: "eleven_flash_v2_5" });
+    nextResponse = audioResponse(200);
+    await speak({ text: "hallo", lang: "af" });
+    ok(lastRequest.body.language_code === undefined, "flash v2.5 + af（不支持）不下发 language_code");
+
+    withOptions({ model: "eleven_flash_v2" });
+    nextResponse = audioResponse(200);
+    await speak({ text: "你好", lang: "zh-Hans" });
+    ok(lastRequest.body.language_code === undefined, "flash v2（仅英语）+ zh 不下发 language_code");
+    nextResponse = audioResponse(200);
+    await speak({ text: "hello", lang: "en" });
+    ok(lastRequest.body.language_code === "en", "flash v2 + en 下发 language_code=en");
+
+    withOptions({ model: "eleven_v3" });
+    nextResponse = audioResponse(200);
+    await speak({ text: "hallo", lang: "af" });
+    ok(lastRequest.body.language_code === "af", "v3（全语言）+ af 下发 language_code=af");
+
+    // 20. 输出格式越档（192kbps 需 Creator+）：实测 403，code=subscription_required /
+    // status=output_format_not_allowed。曾被 401/403 兜底误报成「Key 无效」，必须前置拦截。
+    withOptions({});
+    nextResponse = jsonResponse(403, {
+        detail: { type: "authorization_error", code: "subscription_required", status: "output_format_not_allowed", message: "only available on the Creator tier and above" }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("Creator") > 0,
+        "output_format_not_allowed 报 param 而非 secretKey");
+
+    // 21. 非法输出格式
+    nextResponse = jsonResponse(403, {
+        detail: { type: "validation_error", code: "invalid_output_format", status: "invalid_output_format", message: "Invalid output format" }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param", "invalid_output_format 报 param");
+
+    // 22. 模型不存在（旧格式只带 status 不带 code——验证 status 仍能分派）
+    nextResponse = jsonResponse(400, { detail: { status: "model_not_found", message: "no such model" } });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("模型") >= 0,
+        "model_not_found 报 param 并提示模型");
+
+    // 23. 不支持的语言：code 是通用 invalid_parameters、status 是具体 unsupported_language——
+    // 验证 code/status 分离后仍按 status 命中，不被通用 code 吃成兜底文案。
+    nextResponse = jsonResponse(400, {
+        detail: { type: "validation_error", code: "invalid_parameters", status: "unsupported_language", message: "does not support language_code 'af'" }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("不支持该语言") > 0,
+        "unsupported_language 靠 status 分派到具体文案");
+
+    // 24. voice_settings 越界
+    nextResponse = jsonResponse(400, { detail: { code: "invalid_voice_settings", status: "invalid_voice_settings", message: "speed out of range" } });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "param", "invalid_voice_settings 报 param");
+
+    // 25. troubleshootingLink 在弹窗里只渲染成纯文本 → 把 URL 明文写进 message（P0#4）
+    nextResponse = jsonResponse(401, { detail: { status: "invalid_api_key", message: "bad key" } });
+    r = await speak(EN);
+    ok(r.error && r.error.message.indexOf("elevenlabs.io/app/settings/api-keys") > 0,
+        "troubleshootingLink 的 URL 被明文写进 message");
+    // 已内联 URL 的报错（缺权限）不重复追加
+    nextResponse = jsonResponse(403, { detail: { code: "insufficient_permissions", type: "authorization_error", message: "no tts scope" } });
+    r = await speak(EN);
+    ok(r.error && r.error.message.indexOf("详见") < 0, "message 已含 URL 时不再重复追加");
+
+    // 26. pluginValidate：缺权限判通过（P0#3 方案 b，TTS 不受读权限影响）
+    nextResponse = jsonResponse(403, { detail: { code: "insufficient_permissions", type: "authorization_error", message: "no read scope" } });
+    v = await new Promise(function (resolve) {
+        plugin.pluginValidate(resolve);
+    });
+    ok(v.result === true, "pluginValidate 遇缺权限判通过（TTS 不受影响）");
+
     print("");
     if (failures.length === 0) {
         print("ALL PASS (" + checks + " checks)");
