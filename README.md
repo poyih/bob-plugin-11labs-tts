@@ -58,10 +58,25 @@ make pack     # 打包到 dist/
 make install  # 打包并交给 Bob 安装
 ```
 
-模型和音色列表会随 ElevenLabs 更新而过期，随手同步一下即可（默认只补新增，保留已有的中文标题）：
+模型和音色列表会随 ElevenLabs 更新而过期，随手同步一下即可（会提示输入 API Key，不回显、不进 shell 历史）：
 
 ```bash
-make sync API_KEY=sk_xxx
+make sync
+```
+
+默认只补新增、保留已有标题；`make sync REPLACE=1` 用 API 返回的内容整体重写。
+
+同步之后会自动套一遍**展示层规则**（定义在 `scripts/sync_catalog.py` 顶部）：
+
+- 过滤 ElevenLabs 已标记 deprecated 的模型 —— `/v1/models` 仍会返回它们，不过滤就会被带回菜单
+- 用中文短标题覆盖 API 的长英文描述
+- 给退役名单上的音色加「2026-12-31 停用」标注，并把长期可用的排到前面
+- 校验 `defaultValue` 还在菜单里，不在就改成第一项
+
+只想重新套规则而不联网：
+
+```bash
+python3 scripts/sync_catalog.py --overlay-only
 ```
 
 发版：
