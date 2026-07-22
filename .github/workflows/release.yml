@@ -1,0 +1,53 @@
+name: Release
+
+# 打 tag 即发布：
+#   git tag v1.0.1 && git push origin v1.0.1
+# 版本号以 tag 为准写回 src/info.json，appcast.json 同步追加一条记录。
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 检出默认分支而不是 tag，这样版本提交才能推回去
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: 读取版本号
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: 跑测试
+        run: make test
+
+      - name: 打包并更新 appcast
+        run: |
+          python3 scripts/release.py \
+            --version "${{ steps.meta.outputs.version }}" \
+            --repo "${{ github.repository }}"
+
+      - name: 提交版本变更
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/info.json appcast.json
+          git diff --cached --quiet || git commit -m "chore: release v${{ steps.meta.outputs.version }}"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.bobplugin
+          generate_release_notes: true

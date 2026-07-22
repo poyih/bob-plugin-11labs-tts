@@ -1,0 +1,311 @@
+{
+    "identifier": "com.poyih.bob.plugin.elevenlabs.tts",
+    "version": "1.0.0",
+    "category": "tts",
+    "name": "ElevenLabs 语音合成",
+    "summary": "使用 ElevenLabs 的高质量 AI 语音朗读文本，支持自定义音色与克隆音色。",
+    "author": "poyih",
+    "homepage": "https://github.com/poyih/bob-plugin-11labs-tts",
+    "appcast": "https://raw.githubusercontent.com/poyih/bob-plugin-11labs-tts/main/appcast.json",
+    "minBobVersion": "1.8.0",
+    "options": [
+        {
+            "identifier": "apiKey",
+            "type": "text",
+            "title": "API Key",
+            "defaultValue": "",
+            "textConfig": {
+                "type": "secure",
+                "placeholderText": "sk_..."
+            },
+            "desc": "在 elevenlabs.io/app/settings/api-keys 创建，需要开启 text_to_speech 权限。"
+        },
+        {
+            "identifier": "model",
+            "type": "menu",
+            "title": "模型",
+            "defaultValue": "eleven_flash_v2_5",
+            "menuValues": [
+                {
+                    "title": "Flash v2.5 — 最快、最便宜（32 语言，推荐划词朗读）",
+                    "value": "eleven_flash_v2_5"
+                },
+                {
+                    "title": "Multilingual v2 — 音质最稳、情感自然（29 语言）",
+                    "value": "eleven_multilingual_v2"
+                },
+                {
+                    "title": "v3 — 表现力最强、支持 70+ 语言（较慢、较贵）",
+                    "value": "eleven_v3"
+                },
+                {
+                    "title": "Flash v2 — 仅英语，超低延迟",
+                    "value": "eleven_flash_v2"
+                }
+            ],
+            "desc": "Flash 系列延迟约 75ms，适合即时朗读；Multilingual v2 和 v3 音质更好但更慢。"
+        },
+        {
+            "identifier": "voice",
+            "type": "menu",
+            "title": "音色",
+            "defaultValue": "9BWtsMINqrJLrRacOk9x",
+            "menuValues": [
+                {
+                    "title": "Aria — 女声 · 美式 · 有表现力",
+                    "value": "9BWtsMINqrJLrRacOk9x"
+                },
+                {
+                    "title": "Rachel — 女声 · 美式 · 平稳（经典默认音色）",
+                    "value": "21m00Tcm4TlvDq8ikWAM"
+                },
+                {
+                    "title": "Sarah — 女声 · 美式 · 柔和",
+                    "value": "EXAVITQu4vr4xnSDxMaL"
+                },
+                {
+                    "title": "Laura — 女声 · 美式 · 明快",
+                    "value": "FGY2WhTYpPnrIDTdsKH5"
+                },
+                {
+                    "title": "Jessica — 女声 · 美式 · 有表现力",
+                    "value": "cgSgspJ2msm6clMCkdW9"
+                },
+                {
+                    "title": "Matilda — 女声 · 美式 · 亲和",
+                    "value": "XrExE9yKIg1WjnnlVkGX"
+                },
+                {
+                    "title": "Alice — 女声 · 英式 · 自信",
+                    "value": "Xb7hH8MSUJpSbSDYk0k2"
+                },
+                {
+                    "title": "Lily — 女声 · 英式 · 温暖",
+                    "value": "pFZP5JQG7iQjIQuC4Bku"
+                },
+                {
+                    "title": "Charlotte — 女声 · 瑞典口音 · 低沉",
+                    "value": "XB0fDUnXU5powFXDhCwa"
+                },
+                {
+                    "title": "River — 中性声 · 美式 · 自信",
+                    "value": "SAz9YHcvj6GT2YYXdXww"
+                },
+                {
+                    "title": "Roger — 男声 · 美式 · 沉稳",
+                    "value": "CwhRBWXzGAHq8TQ4Fs17"
+                },
+                {
+                    "title": "Brian — 男声 · 美式 · 低沉",
+                    "value": "nPczCjzI2devNBz1zQrb"
+                },
+                {
+                    "title": "Eric — 男声 · 美式 · 亲和",
+                    "value": "cjVigY5qzO86Huf0OWal"
+                },
+                {
+                    "title": "Chris — 男声 · 美式 · 随意",
+                    "value": "iP95p4xoKVk53GoZ742B"
+                },
+                {
+                    "title": "Will — 男声 · 美式 · 亲和",
+                    "value": "bIHbv24MWmeRgasZH58o"
+                },
+                {
+                    "title": "Liam — 男声 · 美式 · 咬字清晰",
+                    "value": "TX3LPaxmHKxFdv7VOQHJ"
+                },
+                {
+                    "title": "Bill — 男声 · 美式 · 可信赖",
+                    "value": "pqHfZKP75CvOlQylNhV4"
+                },
+                {
+                    "title": "George — 男声 · 英式 · 温暖",
+                    "value": "JBFqnCBsd6RMkjVDRZzb"
+                },
+                {
+                    "title": "Daniel — 男声 · 英式 · 权威",
+                    "value": "onwK4e9ZLuTAKqWW03F9"
+                },
+                {
+                    "title": "Callum — 男声 · 跨大西洋口音 · 有张力",
+                    "value": "N2lVS1w4EtoT3dr4eOWO"
+                },
+                {
+                    "title": "Charlie — 男声 · 澳式 · 自然",
+                    "value": "IKne3meq5aSn9XLyUdCD"
+                },
+                {
+                    "title": "▸ 使用下方填写的自定义 Voice ID",
+                    "value": "__custom__"
+                }
+            ],
+            "desc": "以上为 ElevenLabs 官方默认音色。想用克隆音色或音色库里的新音色，请填下面的自定义 Voice ID。"
+        },
+        {
+            "identifier": "customVoiceId",
+            "type": "text",
+            "title": "自定义 Voice ID",
+            "defaultValue": "",
+            "textConfig": {
+                "type": "visible",
+                "placeholderText": "留空则使用上面选中的音色"
+            },
+            "desc": "填了就优先生效。Voice ID 在 elevenlabs.io 音色详情页的「Voice ID」处复制。"
+        },
+        {
+            "identifier": "outputFormat",
+            "type": "menu",
+            "title": "音频格式",
+            "defaultValue": "mp3_44100_128",
+            "menuValues": [
+                {
+                    "title": "MP3 44.1kHz 128kbps（默认）",
+                    "value": "mp3_44100_128"
+                },
+                {
+                    "title": "MP3 44.1kHz 64kbps（更省流量）",
+                    "value": "mp3_44100_64"
+                },
+                {
+                    "title": "MP3 22.05kHz 32kbps（最快、最省）",
+                    "value": "mp3_22050_32"
+                },
+                {
+                    "title": "MP3 44.1kHz 192kbps（需 Creator 及以上订阅）",
+                    "value": "mp3_44100_192"
+                }
+            ],
+            "desc": "朗读场景 32~64kbps 通常已经够用，能明显缩短等待时间。"
+        },
+        {
+            "identifier": "stability",
+            "type": "menu",
+            "title": "稳定性",
+            "defaultValue": "",
+            "menuValues": [
+                {
+                    "title": "跟随音色自带设置",
+                    "value": ""
+                },
+                {
+                    "title": "0.0 — 更有情绪起伏",
+                    "value": "0"
+                },
+                {
+                    "title": "0.5 — 自然",
+                    "value": "0.5"
+                },
+                {
+                    "title": "1.0 — 最稳定、最平淡",
+                    "value": "1"
+                }
+            ],
+            "desc": "留空表示不覆盖你在 ElevenLabs 网站上给该音色保存的设置。"
+        },
+        {
+            "identifier": "similarityBoost",
+            "type": "menu",
+            "title": "音色相似度",
+            "defaultValue": "",
+            "menuValues": [
+                {
+                    "title": "跟随音色自带设置",
+                    "value": ""
+                },
+                {
+                    "title": "0.5",
+                    "value": "0.5"
+                },
+                {
+                    "title": "0.75",
+                    "value": "0.75"
+                },
+                {
+                    "title": "1.0",
+                    "value": "1"
+                }
+            ],
+            "desc": "越高越贴近原始音色，过高可能放大底噪。"
+        },
+        {
+            "identifier": "style",
+            "type": "menu",
+            "title": "风格强度",
+            "defaultValue": "",
+            "menuValues": [
+                {
+                    "title": "跟随音色自带设置",
+                    "value": ""
+                },
+                {
+                    "title": "0.0 — 关闭（最快）",
+                    "value": "0"
+                },
+                {
+                    "title": "0.3",
+                    "value": "0.3"
+                },
+                {
+                    "title": "0.6",
+                    "value": "0.6"
+                }
+            ],
+            "desc": "放大原音色的说话风格，非 0 会增加延迟。"
+        },
+        {
+            "identifier": "speed",
+            "type": "menu",
+            "title": "语速",
+            "defaultValue": "",
+            "menuValues": [
+                {
+                    "title": "跟随音色自带设置",
+                    "value": ""
+                },
+                {
+                    "title": "0.8 倍 — 慢",
+                    "value": "0.8"
+                },
+                {
+                    "title": "0.9 倍",
+                    "value": "0.9"
+                },
+                {
+                    "title": "1.0 倍 — 正常",
+                    "value": "1.0"
+                },
+                {
+                    "title": "1.1 倍",
+                    "value": "1.1"
+                },
+                {
+                    "title": "1.2 倍 — 快",
+                    "value": "1.2"
+                }
+            ],
+            "desc": "偏离 1.0 太多会影响音质。"
+        },
+        {
+            "identifier": "speakerBoost",
+            "type": "menu",
+            "title": "Speaker Boost",
+            "defaultValue": "",
+            "menuValues": [
+                {
+                    "title": "跟随音色自带设置",
+                    "value": ""
+                },
+                {
+                    "title": "开启",
+                    "value": "true"
+                },
+                {
+                    "title": "关闭（延迟更低）",
+                    "value": "false"
+                }
+            ],
+            "desc": "增强与原始说话人的相似度，会略微增加延迟。"
+        }
+    ]
+}
