@@ -2,6 +2,14 @@
     "identifier": "com.poyih.bob.plugin.elevenlabs.tts",
     "versions": [
         {
+            "version": "1.0.2",
+            "desc": "版本 1.0.2",
+            "sha256": "9106f0df71321f5aa6cb77bfd187941b9e817119f6279f6c6ca257b9d3012778",
+            "url": "https://github.com/poyih/bob-plugin-11labs-tts/releases/download/v1.0.2/bob-plugin-11labs-tts-1.0.2.bobplugin",
+            "minBobVersion": "1.8.0",
+            "timestamp": 1784729678256
+        },
+        {
             "version": "1.0.1",
             "desc": "版本 1.0.1",
             "sha256": "8e4ece611609ef591a7afb932c89d6ede801de2ff8f5482315f88b385f6a1ef1",
