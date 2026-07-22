@@ -56,15 +56,23 @@ def model_entries(api_key):
 
 
 def voice_entries(api_key):
+    """返回 (菜单条目, voice_id -> category)。
+
+    category 很关键：免费订阅通过 API 只能用账号内的音色，用音色库音色会 402
+    （Free users cannot use library voices via the API）。ElevenLabs 的 Default
+    音色（Aria/Roger/Sarah 等）也属于音色库，且官方已宣布 2026-12-31 停用。
+    """
     voices = api_get("/voices", api_key).get("voices", [])
     entries = []
+    categories = {}
     for voice in voices:
         labels = voice.get("labels") or {}
         bits = [labels.get(k) for k in ("gender", "accent", "description")]
         suffix = " · ".join(b for b in bits if b)
         title = f"{voice['name']} — {suffix}" if suffix else voice["name"]
         entries.append({"title": title[:160], "value": voice["voice_id"]})
-    return entries
+        categories[voice["voice_id"]] = voice.get("category") or "unknown"
+    return entries, categories
 
 
 def merge(option, fresh, replace, keep_tail_value=None):
@@ -116,13 +124,20 @@ def main():
 
     if do_voices:
         option = option_by_id(info, "voice")
+        fresh, categories = voice_entries(args.api_key)
         merged, added, stale = merge(
-            option, voice_entries(args.api_key), args.replace, keep_tail_value=CUSTOM_VOICE
+            option, fresh, args.replace, keep_tail_value=CUSTOM_VOICE
         )
         for entry in added:
-            print(f"+ 音色  {entry['value']}  {entry['title']}")
+            print(f"+ 音色  [{categories.get(entry['value'], '?'):<12}] {entry['value']}  {entry['title']}")
         for entry in stale:
             print(f"! 音色  {entry['value']}  账号里已看不到")
+
+        seen = sorted({categories[e["value"]] for e in fresh})
+        print(f"\n账号里的音色分类：{', '.join(seen) or '（空）'}")
+        print("免费订阅通过 API 只能用账号内的音色；音色库音色会返回 402。")
+        print("拿不准就用 premade 或 generated（Voice Design 生成）的那几个。")
+
         if merged != option.get("menuValues"):
             option["menuValues"] = merged
             changed = True

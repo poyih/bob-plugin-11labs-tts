@@ -246,7 +246,18 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.type === "notFound", "voice_not_found 映射为 notFound");
 
-    // 15. 2xx 但返回 JSON —— 上游插件会把它当音频播放
+    // 15. 402 免费订阅用不了音色库音色（Bob 日志里实际遇到的）
+    nextResponse = jsonResponse(402, {
+        detail: {
+            status: "voice_not_allowed_for_free_users",
+            message: "Free users cannot use library voices via the API."
+        }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api" && r.error.message.indexOf("自定义 Voice ID") > 0,
+        "402 带出换音色的具体做法");
+
+    // 16. 2xx 但返回 JSON —— 上游插件会把它当音频播放
     nextResponse = jsonResponse(200, { detail: { status: "something_odd", message: "not audio" } });
     r = await speak(EN);
     ok(r.error && !r.result, "2xx 但响应不是音频时报错而不是播放乱码");

@@ -43,6 +43,7 @@ make install
 
 | 提示 | 原因 |
 |---|---|
+| 当前订阅无法使用该音色（HTTP 402） | 免费订阅不能通过 API 使用音色库音色，而 ElevenLabs 的 Default 音色（Aria/Roger/Sarah 等）正属于音色库。改用「自定义 Voice ID」填你账号内的音色 |
 | API Key 无效或缺少权限 | Key 填错，或者创建时没勾 `text_to_speech` |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
 | 音色不存在 | 自定义 Voice ID 写错，或那个音色不在当前账号下 |

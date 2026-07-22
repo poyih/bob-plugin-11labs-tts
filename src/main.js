@@ -117,6 +117,17 @@ function toServiceError(statusCode, body) {
             troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
         };
     }
+    if (statusCode === 402) {
+        // 免费账号调 API 时用不了音色库音色；ElevenLabs 的默认音色（Aria/Roger/Sarah 等）
+        // 也属于音色库，且官方已宣布 2026-12-31 全部停用。
+        return {
+            type: "api",
+            message:
+                "当前订阅无法使用该音色" + detail +
+                "。请在「自定义 Voice ID」里换成你账号内的音色（Voice Design 生成的即可），或升级订阅",
+            troubleshootingLink: "https://elevenlabs.io/app/voice-lab"
+        };
+    }
     if (statusCode === 404) {
         return { type: "notFound", message: "接口或音色不存在" + detail };
     }

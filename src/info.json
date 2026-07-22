@@ -140,7 +140,7 @@
                     "value": "__custom__"
                 }
             ],
-            "desc": "以上为 ElevenLabs 官方默认音色。想用克隆音色或音色库里的新音色，请填下面的自定义 Voice ID。"
+            "desc": "注意：以下 Default 音色属于音色库，免费订阅通过 API 使用会报 402，且官方已宣布 2026-12-31 全部停用。建议直接填下面的自定义 Voice ID，用你账号内的音色。"
         },
         {
             "identifier": "customVoiceId",
@@ -151,7 +151,7 @@
                 "type": "visible",
                 "placeholderText": "留空则使用上面选中的音色"
             },
-            "desc": "填了就优先生效。Voice ID 在 elevenlabs.io 音色详情页的「Voice ID」处复制。"
+            "desc": "填了就优先生效，也是免费订阅唯一稳妥的用法。在 elevenlabs.io 的 My Voices 里打开音色，复制「Voice ID」。跑 python3 scripts/sync_catalog.py --api-key ... --voices-only --dry-run 可以列出你账号里所有可用音色。"
         },
         {
             "identifier": "outputFormat",
