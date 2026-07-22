@@ -49,90 +49,90 @@
             "identifier": "voice",
             "type": "menu",
             "title": "音色",
-            "defaultValue": "9BWtsMINqrJLrRacOk9x",
+            "defaultValue": "hpp4J3VqNfWAUOO0d1Us",
             "menuValues": [
                 {
-                    "title": "Aria — 女声 · 美式 · 有表现力",
-                    "value": "9BWtsMINqrJLrRacOk9x"
+                    "title": "Bella — 女声 · 美式 · 专业明亮温暖",
+                    "value": "hpp4J3VqNfWAUOO0d1Us"
                 },
                 {
-                    "title": "Rachel — 女声 · 美式 · 平稳（经典默认音色）",
-                    "value": "21m00Tcm4TlvDq8ikWAM"
+                    "title": "Adam — 男声 · 美式 · 沉稳有力",
+                    "value": "pNInz6obpgDQGcFmaJgB"
                 },
                 {
-                    "title": "Sarah — 女声 · 美式 · 柔和",
+                    "title": "Harry — 男声 · 美式 · 硬朗（2026-12-31 停用）",
+                    "value": "SOYHLrjzK2X1ezoPC6cr"
+                },
+                {
+                    "title": "Sarah — 女声 · 美式 · 柔和（2026-12-31 停用）",
                     "value": "EXAVITQu4vr4xnSDxMaL"
                 },
                 {
-                    "title": "Laura — 女声 · 美式 · 明快",
+                    "title": "Laura — 女声 · 美式 · 明快（2026-12-31 停用）",
                     "value": "FGY2WhTYpPnrIDTdsKH5"
                 },
                 {
-                    "title": "Jessica — 女声 · 美式 · 有表现力",
+                    "title": "Jessica — 女声 · 美式 · 有表现力（2026-12-31 停用）",
                     "value": "cgSgspJ2msm6clMCkdW9"
                 },
                 {
-                    "title": "Matilda — 女声 · 美式 · 亲和",
+                    "title": "Matilda — 女声 · 美式 · 亲和（2026-12-31 停用）",
                     "value": "XrExE9yKIg1WjnnlVkGX"
                 },
                 {
-                    "title": "Alice — 女声 · 英式 · 自信",
+                    "title": "Alice — 女声 · 英式 · 自信（2026-12-31 停用）",
                     "value": "Xb7hH8MSUJpSbSDYk0k2"
                 },
                 {
-                    "title": "Lily — 女声 · 英式 · 温暖",
+                    "title": "Lily — 女声 · 英式 · 温暖（2026-12-31 停用）",
                     "value": "pFZP5JQG7iQjIQuC4Bku"
                 },
                 {
-                    "title": "Charlotte — 女声 · 瑞典口音 · 低沉",
-                    "value": "XB0fDUnXU5powFXDhCwa"
-                },
-                {
-                    "title": "River — 中性声 · 美式 · 自信",
+                    "title": "River — 中性声 · 美式 · 自信（2026-12-31 停用）",
                     "value": "SAz9YHcvj6GT2YYXdXww"
                 },
                 {
-                    "title": "Roger — 男声 · 美式 · 沉稳",
+                    "title": "Roger — 男声 · 美式 · 沉稳（2026-12-31 停用）",
                     "value": "CwhRBWXzGAHq8TQ4Fs17"
                 },
                 {
-                    "title": "Brian — 男声 · 美式 · 低沉",
+                    "title": "Brian — 男声 · 美式 · 低沉（2026-12-31 停用）",
                     "value": "nPczCjzI2devNBz1zQrb"
                 },
                 {
-                    "title": "Eric — 男声 · 美式 · 亲和",
+                    "title": "Eric — 男声 · 美式 · 亲和（2026-12-31 停用）",
                     "value": "cjVigY5qzO86Huf0OWal"
                 },
                 {
-                    "title": "Chris — 男声 · 美式 · 随意",
+                    "title": "Chris — 男声 · 美式 · 随意（2026-12-31 停用）",
                     "value": "iP95p4xoKVk53GoZ742B"
                 },
                 {
-                    "title": "Will — 男声 · 美式 · 亲和",
+                    "title": "Will — 男声 · 美式 · 亲和（2026-12-31 停用）",
                     "value": "bIHbv24MWmeRgasZH58o"
                 },
                 {
-                    "title": "Liam — 男声 · 美式 · 咬字清晰",
+                    "title": "Liam — 男声 · 美式 · 咬字清晰（2026-12-31 停用）",
                     "value": "TX3LPaxmHKxFdv7VOQHJ"
                 },
                 {
-                    "title": "Bill — 男声 · 美式 · 可信赖",
+                    "title": "Bill — 男声 · 美式 · 可信赖（2026-12-31 停用）",
                     "value": "pqHfZKP75CvOlQylNhV4"
                 },
                 {
-                    "title": "George — 男声 · 英式 · 温暖",
+                    "title": "George — 男声 · 英式 · 温暖（2026-12-31 停用）",
                     "value": "JBFqnCBsd6RMkjVDRZzb"
                 },
                 {
-                    "title": "Daniel — 男声 · 英式 · 权威",
+                    "title": "Daniel — 男声 · 英式 · 权威（2026-12-31 停用）",
                     "value": "onwK4e9ZLuTAKqWW03F9"
                 },
                 {
-                    "title": "Callum — 男声 · 跨大西洋口音 · 有张力",
+                    "title": "Callum — 男声 · 跨大西洋口音 · 有张力（2026-12-31 停用）",
                     "value": "N2lVS1w4EtoT3dr4eOWO"
                 },
                 {
-                    "title": "Charlie — 男声 · 澳式 · 自然",
+                    "title": "Charlie — 男声 · 澳式 · 自然（2026-12-31 停用）",
                     "value": "IKne3meq5aSn9XLyUdCD"
                 },
                 {
@@ -140,7 +140,7 @@
                     "value": "__custom__"
                 }
             ],
-            "desc": "注意：以下 Default 音色属于音色库，免费订阅通过 API 使用会报 402，且官方已宣布 2026-12-31 全部停用。建议直接填下面的自定义 Voice ID，用你账号内的音色。"
+            "desc": "Bella 和 Adam 不在官方退役名单，可长期使用；标注「停用」的会在 2026-12-31 失效。若某个音色报 402，说明它不在你账号里 —— 免费订阅只能用账号内的音色，跑 make sync 可查。"
         },
         {
             "identifier": "customVoiceId",
