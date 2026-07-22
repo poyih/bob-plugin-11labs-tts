@@ -11,7 +11,9 @@
 """
 
 import argparse
+import getpass
 import json
+import os
 import pathlib
 import sys
 import urllib.error
@@ -97,12 +99,26 @@ def merge(option, fresh, replace, keep_tail_value=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", required=True)
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="留空则读环境变量 ELEVENLABS_API_KEY，再留空则交互式输入（不回显、不进 shell 历史）",
+    )
     parser.add_argument("--replace", action="store_true", help="整体重写而不是只补新增")
     parser.add_argument("--dry-run", action="store_true", help="只打印差异")
     parser.add_argument("--models-only", action="store_true")
     parser.add_argument("--voices-only", action="store_true")
     args = parser.parse_args()
+
+    api_key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        try:
+            api_key = getpass.getpass("ElevenLabs API Key（输入不回显）: ")
+        except (EOFError, KeyboardInterrupt):
+            sys.exit("\n已取消")
+    args.api_key = (api_key or "").strip()
+    if not args.api_key:
+        sys.exit("没有拿到 API Key")
 
     with INFO.open(encoding="utf-8") as fp:
         info = json.load(fp)
@@ -140,6 +156,17 @@ def main():
 
         if merged != option.get("menuValues"):
             option["menuValues"] = merged
+            changed = True
+
+    # --replace 会整体换掉菜单，默认值有可能被换没了。Bob 对不在菜单里的值不会
+    # 报错，只会照旧发出去，界面却显示成第一项 —— 这正是之前 402 排查被误导的
+    # 原因，所以这里必须兜住。
+    for identifier in ("model", "voice"):
+        option = option_by_id(info, identifier)
+        values = [e["value"] for e in option.get("menuValues", []) if e["value"] != CUSTOM_VOICE]
+        if values and option.get("defaultValue") not in values:
+            print(f"\n! {identifier} 的默认值 {option.get('defaultValue')} 已不在菜单里，改为 {values[0]}")
+            option["defaultValue"] = values[0]
             changed = True
 
     if not changed:

@@ -26,9 +26,8 @@ pack: test ## 打包成 .bobplugin
 install: pack ## 打包并让 Bob 安装
 	@open "$(BUNDLE)"
 
-sync: ## 从 ElevenLabs 拉取最新模型/音色补进 info.json（需 API_KEY=...）
-	@test -n "$(API_KEY)" || { echo "用法: make sync API_KEY=sk_xxx"; exit 1; }
-	@python3 scripts/sync_catalog.py --api-key "$(API_KEY)"
+sync: ## 从 ElevenLabs 同步模型/音色到 info.json（会提示输入 Key；REPLACE=1 整体重写）
+	@python3 scripts/sync_catalog.py $(if $(REPLACE),--replace) $(SYNC_ARGS)
 
 clean: ## 清理构建产物
 	@rm -rf dist
