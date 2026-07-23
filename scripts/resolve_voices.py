@@ -1,29 +1,30 @@
 #!/usr/bin/env python3
-"""把官方「Default 音色替换表」的 19 个新音色名解析成真实 voice_id。
+"""核对 2026-12-31 之后的接班音色：官方 19 个 voice_id + 本账号可用性。
 
 背景：2026-12-31 之后 src/info.json 里那 21 个 Default 音色全部失效。官方帮助
-文章给了一张 19 行替换表，但**只有名字、没有 ID** —— 新音色不在 /v1/voices 里
-（免密钥和带密钥都只返回那 21 个 premade），只能通过需要鉴权的音色库搜索查到。
+文章给了一张 19 行替换表；表格**正文**只有名字，但**每个名字本身是超链接**，
+链接最终指向 elevenlabs.io/app/voice-library?search=<voice_id> —— ID 就在那里。
+19 个 ID 已据此提取并固化在下面的 REPLACEMENTS（提取方法见其注释）。
 
-为什么不能直接抄网上流传的那份 ID 表：那份表的作者本人已经撤回。
-LiveKit 社区帖 community.livekit.io/t/new-default-elevenlabs-voices/459 第 8 楼
-（Mike Saunders, 2026-04-22）原文：
+新音色**不在** /v1/voices 里（免密钥与带密钥都只返回那 21 个 premade），
+所以本脚本做三件事：
 
-    "The announcement email only had names so I guess I pulled in the wrong
-     codes from the API."
+  1. 列出官方权威 ID（离线，无需网络）
+  2. 用音色库搜索给每个 ID 补元数据：category / free_users_allowed / 计费倍率
+  3. **交叉校验**：按名字搜到的结果与官方 ID 是否一致，不一致就告警
 
-官方公告只给了名字，他按名字去 API 搜，搜到了**同名的错误音色**（于是同帖里
-另一位说这些是 Pro Cloned 音色 —— 他查的正是那批错 ID）。
-
-所以本脚本的核心设计是：**绝不自动挑选**。同名候选一律全部列出、标明歧义，
-由人来定。名字撞车正是上面那次出错的根因，自动挑等于重蹈覆辙。
+第 3 步不是多余的。实测 Kellan：音色库搜索只返回一个候选
+ogqEVaDb8zHocDItWo7S（high_quality、free=True，信号看起来完全干净），
+而官方链接给的是 cymHWdiF8WjUCg6vvFxx。**按名字搜会静悄悄挑错、毫无警示**，
+这正是网上流传那批错 ID 的成因。其余 18 个两法一致。
 
 用法：
-    python3 scripts/resolve_voices.py              # 解析并打印（只读，不耗额度）
+    python3 scripts/resolve_voices.py              # 核对并打印（只读，不耗额度）
+    python3 scripts/resolve_voices.py --offline    # 只打印官方表，完全不联网、不要 Key
     python3 scripts/resolve_voices.py --probe      # 额外对每个 ID 实打 2 字符确认真能合成
     python3 scripts/resolve_voices.py --json       # 输出可并进 info.json 的 menuValues 片段
 
-解析只读、不消耗额度；--probe 每个音色约 1~2 credits（19 个约 30 credits）。
+核对只读、不消耗额度；--probe 每个音色约 1~2 credits（19 个约 30 credits）。
 只依赖标准库。全程不打印 API Key。
 """
 
@@ -40,30 +41,47 @@ import urllib.request
 API_BASE = "https://api.elevenlabs.io/v1"
 PROBE_TEXT = "hi"
 
-# 官方替换表（help.elevenlabs.io「What are Default voices?」，2026-07-23 逐字抄录
-# 自 docs 镜像 /docs/help-center/product/voice-customization/my-voices/
-# what-are-default-voices.md —— help 站点直连被 Zendesk 403）。
-# 19 行。注意 Bella 与 Adam **不在表内**：官方没有给这两个安排接班音色。
+# 官方替换表（help.elevenlabs.io「What are Default voices?」）。
+#
+# voice_id 的权威出处：**该表每个新音色名本身是超链接**，指向
+# r.contact.elevenlabs.io 的跟踪页；跟踪页正文的 meta-refresh 目标是
+# https://elevenlabs.io/app/voice-library?search=<voice_id>。
+# 注意跟踪页返回 HTTP 405 且不发 Location 头，`curl -L` 跟不到底，必须读正文。
+# 19 个 ID 于 2026-07-23 由此逐个提取（表格文字取自 docs 镜像
+# /docs/help-center/product/voice-customization/my-voices/what-are-default-voices.md，
+# 因为 help 站点直连被 Zendesk 403）。
+#
+# 注意 Bella 与 Adam **不在表内**：官方没给这两个安排接班音色。
+#
+# ⚠️ 为什么必须用官方链接的 ID，而不是「按名字去音色库搜」：
+# 实测 Kellan 一项，音色库搜索只返回一个候选 ogqEVaDb8zHocDItWo7S
+# （"Kellan - Resonant, Smooth and Confident"，high_quality、free=True——信号
+# 看起来完全干净），但官方链接给的是 cymHWdiF8WjUCg6vvFxx。**按名字搜会静悄悄
+# 挑错，且毫无警示。** 这正是网上流传那批错 ID 的成因。其余 18 个两法一致。
+#
+# 另有两处官方表文字与音色库现名不符，ID 以官方链接为准：
+#   Eddie  官方表 "Helpful and Comforting" → 库中现名 "Natural and Helpful"
+#   Finley 官方表 "Articulate Anchor"      → 库中现名多一个空格
 REPLACEMENTS = [
-    ("Roger", "Darian - Warm Grounded Storyteller"),
-    ("Sarah", "Talia - Warm Soft Guide"),
-    ("Laura", "Elara - Crisp Pro Narrator"),
-    ("Charlie", "Baxter - Dry Calm Aussie"),
-    ("George", "Eldrin - Crisp British Baritone"),
-    ("Callum", "Kellan - Casual Friendly Speaker"),
-    ("River", "Elowen - Upbeat Modern Narrator"),
-    ("Harry", "Kaelen - Amateur Warrior"),
-    ("Liam", "Lawrence - Bright and Informative"),
-    ("Alice", "Alicia - Polished Global Anchor"),
-    ("Matilda", "Maisie - Friendly Casual Neighbor"),
-    ("Will", "Warren - Effortless and Cool"),
-    ("Jessica", "Jade - Upbeat and Natural"),
-    ("Eric", "Eddie - Helpful and Comforting"),
-    ("Chris", "Caleb - Trusted Guide"),
-    ("Brian", "Sawyer - Midnight Storyteller"),
-    ("Daniel", "Finley - Articulate Anchor"),
-    ("Lily", "Florence - Atmospheric Storyteller"),
-    ("Bill", "Wyatt - Seasoned Mentor"),
+    ("Roger", "Darian - Warm Grounded Storyteller", "gOupLcAkjEnguROwi4oS"),
+    ("Sarah", "Talia - Warm Soft Guide", "OZ0L6eISlOejga3XjDFt"),
+    ("Laura", "Elara - Crisp Pro Narrator", "WQP7cQUF5aAS6Axh5yaa"),
+    ("Charlie", "Baxter - Dry Calm Aussie", "jSuBIjxMKhqIfb0wCK1F"),
+    ("George", "Eldrin - Crisp British Baritone", "6WwXjDDEMyNmFG95zycZ"),
+    ("Callum", "Kellan - Casual Friendly Speaker", "cymHWdiF8WjUCg6vvFxx"),
+    ("River", "Elowen - Upbeat Modern Narrator", "dvbL7qkNGZY1IqPGZAjM"),
+    ("Harry", "Kaelen - Amateur Warrior", "10NkTYmU7tSz3Kkl3Lex"),
+    ("Liam", "Lawrence - Bright and Informative", "ktkP7Nsj67dw2zcplQYt"),
+    ("Alice", "Alicia - Polished Global Anchor", "BFd5oBc2DDna33pSi4Gf"),
+    ("Matilda", "Maisie - Friendly Casual Neighbor", "QtY3JBOUKEB5xzrRfOKc"),
+    ("Will", "Warren - Effortless and Cool", "7QN34D2r3hCNwbOYIeK0"),
+    ("Jessica", "Jade - Upbeat and Natural", "g7LVvkPWALzPxOQbF6OE"),
+    ("Eric", "Eddie - Helpful and Comforting", "l7kNoIfnJKPg7779LI2t"),
+    ("Chris", "Caleb - Trusted Guide", "AaOhDHYJ1XLZk74lXhdE"),
+    ("Brian", "Sawyer - Midnight Storyteller", "8dEUmyPMdDdK91vboYih"),
+    ("Daniel", "Finley - Articulate Anchor", "fnYMz3F5gMEDGMWcH1ex"),
+    ("Lily", "Florence - Atmospheric Storyteller", "22N9cF8z0o7y23njdyaY"),
+    ("Bill", "Wyatt - Seasoned Mentor", "FrS6cKLB1wg4WYgPa9GW"),
 ]
 
 
@@ -147,32 +165,44 @@ def describe(voice):
     return "  ".join(bits)
 
 
-def resolve_one(api_key, new_name, owned_by_name):
-    """解析一个新音色名。返回 dict：
-       {name, token, matches: [voice...], source: 'own'|'library'|None, error}
+def crosscheck_one(api_key, new_name, official_id, owned):
+    """给官方 ID 补元数据，并与「按名字搜」的结果交叉校验。
 
-    绝不自动挑选：exact 命中也把其余同名候选一并留在 matches 里，交给人看。
+    返回 {meta, verdict, note, candidates}：
+      verdict 'own'      —— 该 ID 已在你账号里（一定可用）
+              'match'    —— 按名字搜能搜到同一个 ID，两法一致
+              'diverge'  —— 搜到同名的**别的** ID，官方 ID 不在搜索结果里（Kellan 即此）
+              'unlisted' —— 名字搜不到任何候选
+              'error'    —— 搜索失败
     """
     token = first_token(new_name)
 
-    # 1) 先看账号自己有没有（免搜索，且这类 ID 一定可用）
-    owned = [v for v in owned_by_name if first_token(v.get("name", "")) == token]
-    if owned:
-        return {"name": new_name, "token": token, "matches": owned,
-                "source": "own", "error": None}
+    owned_hit = next((v for v in owned if v.get("voice_id") == official_id), None)
+    if owned_hit:
+        return {"meta": owned_hit, "verdict": "own", "note": "已在账号内",
+                "candidates": []}
 
-    # 2) 再搜音色库
     found, err = search_library(api_key, token)
     if err:
-        return {"name": new_name, "token": token, "matches": [],
-                "source": None, "error": err}
+        return {"meta": None, "verdict": "error", "note": err, "candidates": []}
 
-    matches = [v for v in found if first_token(v.get("name", "")) == token]
-    # 完整显示名精确命中的排前面，但**不丢弃**其余同名候选
-    matches.sort(key=lambda v: (v.get("name", "") != new_name,
-                                v.get("name", "")))
-    return {"name": new_name, "token": token, "matches": matches,
-            "source": "library" if matches else None, "error": None}
+    same_name = [v for v in found if first_token(v.get("name", "")) == token]
+    official = next((v for v in same_name if v.get("voice_id") == official_id), None)
+
+    if official:
+        others = [v for v in same_name if v.get("voice_id") != official_id]
+        note = f"搜索一致（另有 {len(others)} 个同名干扰项）" if others else "搜索一致"
+        return {"meta": official, "verdict": "match", "note": note,
+                "candidates": others}
+
+    if not same_name:
+        return {"meta": None, "verdict": "unlisted",
+                "note": "音色库按名字搜不到（官方 ID 仍以表为准）", "candidates": []}
+
+    return {"meta": None, "verdict": "diverge",
+            "note": f"⚠ 按名字搜到 {len(same_name)} 个同名音色，但**都不是**官方 ID —— "
+                    f"只按名字搜就会挑错",
+            "candidates": same_name}
 
 
 def probe(api_key, voice_id):
@@ -191,10 +221,26 @@ def main():
     parser.add_argument("--api-key", default=None,
                         help="留空则读 ELEVENLABS_API_KEY，再留空则交互式输入（不回显）")
     parser.add_argument("--probe", action="store_true",
-                        help="对每个解析到的 ID 实打 2 字符确认可用（约 1~2 credits/个）")
+                        help="对每个 ID 实打 2 字符确认可用（约 1~2 credits/个）")
     parser.add_argument("--json", action="store_true",
                         help="额外输出可并进 info.json 的 menuValues 片段")
+    parser.add_argument("--offline", action="store_true",
+                        help="只打印官方表，不联网、不需要 Key")
     args = parser.parse_args()
+
+    if args.offline:
+        print(f"官方接班音色表（{len(REPLACEMENTS)} 个，出处见脚本 REPLACEMENTS 注释）")
+        print("=" * 74)
+        for old, new, vid in REPLACEMENTS:
+            print(f"  {old:<9} → {vid}  {new}")
+        print("=" * 74)
+        print("Bella 与 Adam 不在官方替换表内，没有接班音色。")
+        if args.json:
+            print("\ninfo.json menuValues 片段（标题请自行改成中文）：")
+            print(json.dumps([{"title": new, "value": vid}
+                              for _, new, vid in REPLACEMENTS],
+                             indent=4, ensure_ascii=False))
+        return
 
     api_key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
     if not api_key:
@@ -210,63 +256,48 @@ def main():
     owned = own_voices(api_key)
     print(f"  账号内 {len(owned)} 个\n")
 
-    print(f"解析官方替换表的 {len(REPLACEMENTS)} 个新音色（只读，不耗额度）")
+    print(f"核对官方替换表的 {len(REPLACEMENTS)} 个接班音色（只读，不耗额度）")
     print("=" * 78)
 
-    resolved, ambiguous, missing = [], [], []
+    diverged = []
 
-    for old, new in REPLACEMENTS:
-        r = resolve_one(api_key, new, owned)
-        head = f"{old:<9} → {r['token']:<9}"
+    for old, new, vid in REPLACEMENTS:
+        r = crosscheck_one(api_key, new, vid, owned)
+        mark = {"own": "✓", "match": "✓", "unlisted": "·",
+                "diverge": "⚠", "error": "✗"}[r["verdict"]]
+        meta = describe(r["meta"]) if r["meta"] else ""
+        print(f"{mark} {old:<9} → {first_token(new):<9} {vid}  {meta}")
+        print(f"{'':32}{r['note']}")
 
-        if r["error"]:
-            print(f"{head}  ✗ 搜索失败：{r['error']}")
-            missing.append((old, new, r["error"]))
-            continue
-        if not r["matches"]:
-            print(f"{head}  ✗ 音色库里没搜到")
-            missing.append((old, new, "not found"))
-            continue
-
-        exact = [v for v in r["matches"] if v.get("name") == new]
-        src = "账号内" if r["source"] == "own" else "音色库"
-
-        if len(r["matches"]) == 1 and exact:
-            v = r["matches"][0]
-            print(f"{head}  ✓ {v['voice_id']}  [{src}]  {describe(v)}")
-            resolved.append((old, new, v))
-        else:
-            # 同名多个 —— 正是当年出错的地方，全部摊开，不替你选
-            flag = "⚠ 同名多个，需人工确认" if not exact else "⚠ 有同名干扰项"
-            print(f"{head}  {flag}（{len(r['matches'])} 个候选，[{src}]）")
-            for v in r["matches"]:
-                mark = "←官方全名精确匹配" if v.get("name") == new else ""
-                print(f"{'':13}   {v['voice_id']}  {v.get('name','?')}  {describe(v)} {mark}")
-            if exact:
-                resolved.append((old, new, exact[0]))
-            ambiguous.append((old, new, r["matches"]))
+        if r["verdict"] == "diverge":
+            diverged.append((old, new, vid))
+            for v in r["candidates"]:
+                print(f"{'':32}  搜到 {v['voice_id']}  {v.get('name','?')}  {describe(v)}")
 
     print("=" * 78)
-    print(f"解析到 {len(resolved)} / {len(REPLACEMENTS)}；"
-          f"同名歧义 {len(ambiguous)}；未找到 {len(missing)}")
-    print("注意：Bella 与 Adam 不在官方替换表内，没有接班音色。")
+    if diverged:
+        names = "、".join(first_token(n) for _, n, _ in diverged)
+        print(f"官方 ID {len(REPLACEMENTS)} 个；与按名字搜的结果分歧 {len(diverged)} 个"
+              f"（{names}）—— 只按名字搜会挑错，务必用官方 ID")
+    else:
+        print(f"官方 ID {len(REPLACEMENTS)} 个；与按名字搜的结果无分歧")
+    print("Bella 与 Adam 不在官方替换表内，没有接班音色。")
 
-    if args.probe and resolved:
-        print(f"\n实打确认（每个约 1~2 credits，共 {len(resolved)} 个）")
+    if args.probe:
+        print(f"\n实打确认（每个约 1~2 credits，共 {len(REPLACEMENTS)} 个）")
         print("-" * 78)
         usable = 0
-        for old, new, v in resolved:
-            ok, note = probe(api_key, v["voice_id"])
-            print(f"  {'✓' if ok else '✗'} {first_token(new):<9} {v['voice_id']}  {note}")
+        for old, new, vid in REPLACEMENTS:
+            ok, note = probe(api_key, vid)
+            print(f"  {'✓' if ok else '✗'} {first_token(new):<9} {vid}  {note}")
             usable += 1 if ok else 0
-        print(f"  本账号下可用 {usable} / {len(resolved)}")
+        print(f"  本账号下可用 {usable} / {len(REPLACEMENTS)}")
 
-    if args.json and resolved:
+    if args.json:
         print("\ninfo.json menuValues 片段（标题请自行改成中文）：")
-        print(json.dumps(
-            [{"title": v.get("name", new), "value": v["voice_id"]}
-             for _, new, v in resolved],
-            indent=4, ensure_ascii=False))
+        print(json.dumps([{"title": new, "value": vid}
+                          for _, new, vid in REPLACEMENTS],
+                         indent=4, ensure_ascii=False))
 
 
 if __name__ == "__main__":

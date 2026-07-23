@@ -2,7 +2,7 @@
 
 给 [Bob](https://bobtranslate.com) 用的 ElevenLabs TTS 插件，划词之后直接用 AI 语音朗读。
 
-> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效。官方给了一张 19 行接班音色**名字**表但没有 ID，`scripts/resolve_voices.py` 可把名字解析成真 ID。详见 [HANDOFF.md](HANDOFF.md)。
+> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效。官方 19 个接班音色的 voice_id 已提取并存档，见 [HANDOFF.md](HANDOFF.md) 或跑 `python3 scripts/resolve_voices.py --offline`。
 
 ## 特点
 
@@ -126,7 +126,7 @@ scripts/
   release.py        写版本号 → 打包 → sha256 → 更新 appcast
   sync_catalog.py   从 ElevenLabs 同步模型/音色到 info.json
   verify_api.py     拿真实 Key 实测 API 行为，核实文档说法
-  resolve_voices.py 把官方替换表的 19 个新音色名解析成真 voice_id（只读）
+  resolve_voices.py 官方 19 个接班音色 ID + 本账号可用性核对（--offline 免联网）
 ```
 
 待验证事项与 2026-12-31 的应对见 [HANDOFF.md](HANDOFF.md)。

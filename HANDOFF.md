@@ -152,9 +152,41 @@ not_logged_in                HTTP 401  ← 无密钥打 /v1/shared-voices?search
 
 官方公告只给了名字，他按名字去 API 搜，搜到了**同名的错误音色**。这也解释了同帖第 5 楼另一位（Tom Shapland）说「这些是 shared library / Pro Cloned 音色、免费档不可用」—— 他查的正是那批错 ID；而他本人在第 7 楼（3-19）已给出官方文档、说这批音色可通过 LiveKit Inference 使用。**所以「接班音色是音色库音色、API 用不了」并不成立**，别把该帖中段的争议当结论（本项目曾一度如此，源于一轮 verify 工作流只跑了取证、证伪阶段被中断）。
 
-**新音色不在 `/v1/voices` 里**（免密钥与带密钥都只返回那 21 个 premade —— 免密钥列表已实测与 payg 账号完全一致，含 Bella `hpp4J3VqNfWAUOO0d1Us`）。要拿真 ID 只能走**需鉴权的音色库搜索** `GET /v1/shared-voices?search=`（无密钥直接报 `authentication_error` / `unauthorized` / `not_logged_in`）。
+**ID 已拿到，出处是官方表自己的超链接（2026-07-23）。** 表格正文只有名字，但**每个新音色名本身是超链接**，指向 `r.contact.elevenlabs.io` 跟踪页；该页返回 **HTTP 405 且不发 Location 头**（`curl -L` 跟不到底，必须读正文），正文的 meta-refresh 目标就是 `https://elevenlabs.io/app/voice-library?search=<voice_id>`。19 个全部提取成功，已固化在 `scripts/resolve_voices.py` 的 `REPLACEMENTS`：
 
-**怎么拿到真 ID**：跑 `python3 scripts/resolve_voices.py`（只读、不耗额度），它按官方 19 个名字去音色库解析 ID。**该脚本刻意不自动挑选** —— 同名候选一律全部列出由人确认，因为「按名字搜、挑了同名的错音色」正是上面那份错 ID 的成因。加 `--probe` 可对每个 ID 实打 2 字符确认本账号真能合成（约 1~2 credits/个）。
+| 旧 | 新 | voice_id |
+|---|---|---|
+| Roger | Darian | `gOupLcAkjEnguROwi4oS` |
+| Sarah | Talia | `OZ0L6eISlOejga3XjDFt` |
+| Laura | Elara | `WQP7cQUF5aAS6Axh5yaa` |
+| Charlie | Baxter | `jSuBIjxMKhqIfb0wCK1F` |
+| George | Eldrin | `6WwXjDDEMyNmFG95zycZ` |
+| Callum | Kellan | `cymHWdiF8WjUCg6vvFxx` |
+| River | Elowen | `dvbL7qkNGZY1IqPGZAjM` |
+| Harry | Kaelen | `10NkTYmU7tSz3Kkl3Lex` |
+| Liam | Lawrence | `ktkP7Nsj67dw2zcplQYt` |
+| Alice | Alicia | `BFd5oBc2DDna33pSi4Gf` |
+| Matilda | Maisie | `QtY3JBOUKEB5xzrRfOKc` |
+| Will | Warren | `7QN34D2r3hCNwbOYIeK0` |
+| Jessica | Jade | `g7LVvkPWALzPxOQbF6OE` |
+| Eric | Eddie | `l7kNoIfnJKPg7779LI2t` |
+| Chris | Caleb | `AaOhDHYJ1XLZk74lXhdE` |
+| Brian | Sawyer | `8dEUmyPMdDdK91vboYih` |
+| Daniel | Finley | `fnYMz3F5gMEDGMWcH1ex` |
+| Lily | Florence | `22N9cF8z0o7y23njdyaY` |
+| Bill | Wyatt | `FrS6cKLB1wg4WYgPa9GW` |
+
+离线查看：`python3 scripts/resolve_voices.py --offline`（不联网、不需要 Key）。
+
+**⚠️ 千万别改用「按名字去音色库搜」来取这些 ID。** 实测 payg 账号搜 `Kellan`：只返回一个候选 `ogqEVaDb8zHocDItWo7S`（"Kellan - Resonant, Smooth and Confident"，`cat=high_quality`、`free=True` —— 信号看起来完全干净、毫无歧义），**但它不是官方那个**。按名字搜会静悄悄挑错且不给任何警示。其余 18 个两法一致。`resolve_voices.py` 默认会做这个交叉校验并对分歧告警。
+
+顺带修正前一版的判断：那份「被作者撤回」的流传 ID 表，经与官方链接逐条比对 **18/18 全对**（它只是缺 Kellan）。作者的自我撤回是多余的认错，同帖「这些是 Pro Cloned、免费档用不了」的说法也不成立。**教训是：论坛说法和作者撤回都不算数，只有官方链接 + API 实测算数。**
+
+另有两处官方表文字与音色库现名不符，**ID 以官方链接为准**：Eddie（表写 "Helpful and Comforting"，库中现名 "Natural and Helpful"）、Finley（库中名多一个空格）。
+
+**接班音色对免费档大概率可用（未实测）**：payg 账号搜到的官方对应音色，元数据均为 `cat=high_quality`、`free_users_allowed=True`、无计费倍率。这与文档那句「Voice Library voices are not available via the API to free tier users」冲突 —— 合理解释是音色库逐个音色带 `free_users_allowed` 标志，文档那句是过度简化。**但这是 API 字段，不是免费档真实合成过**，无免费档 Key 未能实证。另注意同名冒牌里有 `rate=2.0` 的（Darian-Velvety、Jade-Calm、Jade-Millennial、Wyatt 裸名），选错**双倍计费**。
+
+用 `python3 scripts/resolve_voices.py --probe` 可对 19 个 ID 逐个实打 2 字符，确认本账号真能合成（约 1~2 credits/个）。
 
 **付费 vs 免费的迁移难度不同（关键结论）**：
 - 付费档（含 payg）：到期后迁移**容易**——付费档可通过 API 使用 Voice Library 音色（实测 Aria 200）和接班的新 Default 音色，换一批 voice ID 填进「自定义 Voice ID」或更新菜单即可继续用。
