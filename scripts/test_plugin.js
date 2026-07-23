@@ -235,8 +235,9 @@ var EN = { text: "hello world", lang: "en" };
     // 9. 默认不覆盖音色自带设置
     ok(lastRequest.body.voice_settings === undefined, "未设置时不下发 voice_settings");
 
-    // 10. 只下发被覆盖的项
-    withOptions({ stability: "0.5", speed: "1.1", speakerBoost: "false" });
+    // 10. 只下发被覆盖的项（用 multilingual_v2 —— 它支持全部字段，避免与模型门控耦合，
+    //     门控本身由用例 27 单独覆盖）
+    withOptions({ model: "eleven_multilingual_v2", stability: "0.5", speed: "1.1", speakerBoost: "false" });
     nextResponse = audioResponse(200);
     await speak(EN);
     var vs = lastRequest.body.voice_settings;
@@ -405,6 +406,37 @@ var EN = { text: "hello world", lang: "en" };
         plugin.pluginValidate(resolve);
     });
     ok(v.result === true, "pluginValidate 遇缺权限判通过（TTS 不受影响）");
+
+    // 27. voice_settings 按模型能力门控（/v1/models: style / speaker_boost 仅 multilingual_v2）
+    // v3：style 与 speaker_boost 丢弃，stability / speed / similarity 仍下发
+    withOptions({
+        model: "eleven_v3",
+        stability: "0.5", similarityBoost: "0.75", style: "0.3", speed: "1.1", speakerBoost: "true"
+    });
+    nextResponse = audioResponse(200);
+    logs = [];
+    await speak(EN);
+    var vs3 = lastRequest.body.voice_settings;
+    ok(vs3 && vs3.style === undefined && vs3.use_speaker_boost === undefined,
+        "v3 不下发 style / use_speaker_boost");
+    ok(vs3 && vs3.stability === 0.5 && vs3.speed === 1.1 && vs3.similarity_boost === 0.75,
+        "v3 仍下发 stability / speed / similarity_boost");
+    ok(loggedLine("voice_settings 丢弃（eleven_v3 不支持）"), "丢弃的字段写进日志");
+
+    // flash_v2_5 同样门控 style / speaker_boost
+    withOptions({ model: "eleven_flash_v2_5", style: "0.3", speakerBoost: "false" });
+    nextResponse = audioResponse(200);
+    await speak(EN);
+    ok(!lastRequest.body.voice_settings || lastRequest.body.voice_settings.style === undefined,
+        "flash v2.5 也不下发 style");
+
+    // multilingual_v2：两项都支持，正常下发
+    withOptions({ model: "eleven_multilingual_v2", style: "0.3", speakerBoost: "true" });
+    nextResponse = audioResponse(200);
+    await speak(EN);
+    var vsMul = lastRequest.body.voice_settings;
+    ok(vsMul && vsMul.style === 0.3 && vsMul.use_speaker_boost === true,
+        "multilingual_v2 正常下发 style / use_speaker_boost");
 
     print("");
     if (failures.length === 0) {

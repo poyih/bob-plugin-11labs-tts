@@ -66,6 +66,36 @@ function modelAcceptsLanguage(modelId, code) {
     return langs.indexOf(code) !== -1;
 }
 
+// 各模型对 voice_settings 字段的支持能力。
+// 出处：GET /v1/models 每个模型的 can_use_style / can_use_speaker_boost 布尔标志
+// （2026-07-23 真机拉取）。实测这两项仅 multilingual_v2 为 true，flash_v2_5 / flash_v2 /
+// v3 均为 false——传了会被服务端忽略。这里做运行时门控，让请求体与模型能力一致、日志更
+// 干净，也对「个别模型可能改为 400 而非忽略」留一层保险；即便某标志日后变化，门控最坏
+// 是漏发一个本可生效的字段（音质微损），不会造成报错。
+//
+// 注意：/v1/models 只暴露 can_use_style 和 can_use_speaker_boost 两个字段，没有
+// speed / similarity_boost / stability 的 per-model 标志，所以这三项一律下发、不门控。
+var MODEL_SETTINGS = {
+    eleven_multilingual_v2: { style: true, use_speaker_boost: true },
+    eleven_flash_v2_5: { style: false, use_speaker_boost: false },
+    eleven_flash_v2: { style: false, use_speaker_boost: false },
+    eleven_v3: { style: false, use_speaker_boost: false },
+    // turbo 已 deprecated，能力与同名 flash 一致
+    eleven_turbo_v2_5: { style: false, use_speaker_boost: false },
+    eleven_turbo_v2: { style: false, use_speaker_boost: false }
+};
+
+// 某模型是否接受该 voice_settings 字段。只有 style / use_speaker_boost 受门控；
+// 其余字段（stability / speed / similarity_boost）无 /v1/models 能力标志，一律放行。
+// 未知模型或未知字段一律放行，保留用户意图。
+function modelAcceptsSetting(modelId, field) {
+    var caps = MODEL_SETTINGS[modelId];
+    if (!caps || !(field in caps)) {
+        return true;
+    }
+    return caps[field];
+}
+
 // Bob 语言代码 -> ElevenLabs 的 ISO 639-1 代码。
 // tier 表示「最低要哪一档模型才原生支持」：
 //   v2    - multilingual_v2 / flash_v2_5 / v3 都支持
@@ -181,3 +211,5 @@ exports.LEGACY_VOICES = LEGACY_VOICES;
 exports.langMap = langMap;
 exports.MODEL_LANGUAGES = MODEL_LANGUAGES;
 exports.modelAcceptsLanguage = modelAcceptsLanguage;
+exports.MODEL_SETTINGS = MODEL_SETTINGS;
+exports.modelAcceptsSetting = modelAcceptsSetting;

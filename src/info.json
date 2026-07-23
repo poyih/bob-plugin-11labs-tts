@@ -251,7 +251,7 @@
                     "value": "0.6"
                 }
             ],
-            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 会忽略此参数（官方 /v1/models 元数据 can_use_style=false）。"
+            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_style=false），本插件在这些模型上不会发送此参数。"
         },
         {
             "identifier": "speed",
@@ -305,7 +305,7 @@
                     "value": "false"
                 }
             ],
-            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 会忽略此参数（官方 /v1/models 元数据 can_use_speaker_boost=false）。"
+            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_speaker_boost=false），本插件在这些模型上不会发送此参数。"
         }
     ]
 }

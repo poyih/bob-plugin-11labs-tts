@@ -281,9 +281,12 @@ function resolveVoice() {
     };
 }
 
-// 只把用户显式覆盖过的项发给 API，其余留空则沿用音色在 ElevenLabs 上保存的设置
-function buildVoiceSettings() {
+// 只把用户显式覆盖过的项发给 API，其余留空则沿用音色在 ElevenLabs 上保存的设置。
+// 再按模型能力门控：style / use_speaker_boost 只有 multilingual_v2 支持，其余模型
+// （含 v3）会忽略，这里直接不发（详见 config.js MODEL_SETTINGS）。
+function buildVoiceSettings(modelId) {
     var settings = {};
+    var dropped = [];
 
     var numeric = [
         ["stability", "stability"],
@@ -297,14 +300,27 @@ function buildVoiceSettings() {
             return;
         }
         var value = Number(raw);
-        if (!isNaN(value)) {
-            settings[pair[1]] = value;
+        if (isNaN(value)) {
+            return;
         }
+        if (!config.modelAcceptsSetting(modelId, pair[1])) {
+            dropped.push(pair[1]);
+            return;
+        }
+        settings[pair[1]] = value;
     });
 
     var boost = trimmed($option.speakerBoost);
     if (boost === "true" || boost === "false") {
-        settings.use_speaker_boost = boost === "true";
+        if (config.modelAcceptsSetting(modelId, "use_speaker_boost")) {
+            settings.use_speaker_boost = boost === "true";
+        } else {
+            dropped.push("use_speaker_boost");
+        }
+    }
+
+    if (dropped.length) {
+        logInfo("voice_settings 丢弃（" + modelId + " 不支持）：" + dropped.join(","));
     }
 
     return Object.keys(settings).length > 0 ? settings : null;
@@ -461,7 +477,7 @@ function tts(query, completion) {
                 body.language_code = languageCode;
             }
 
-            var voiceSettings = buildVoiceSettings();
+            var voiceSettings = buildVoiceSettings(modelId);
             if (voiceSettings) {
                 body.voice_settings = voiceSettings;
             }
