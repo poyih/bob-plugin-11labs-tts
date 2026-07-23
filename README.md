@@ -2,7 +2,7 @@
 
 给 [Bob](https://bobtranslate.com) 用的 ElevenLabs TTS 插件，划词之后直接用 AI 语音朗读。
 
-> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效，届时无现成替代方案。详见 [HANDOFF.md](HANDOFF.md)。
+> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效。官方给了一张 19 行接班音色**名字**表但没有 ID，`scripts/resolve_voices.py` 可把名字解析成真 ID。详见 [HANDOFF.md](HANDOFF.md)。
 
 ## 特点
 
@@ -16,7 +16,7 @@
 
 **84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
-**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 44 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
+**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 49 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
 ## 安装
 
@@ -104,7 +104,7 @@ python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 
 ```bash
 git push                                    # 必须先推代码
-git tag v1.0.3 && git push origin v1.0.3    # 再推 tag
+git tag v1.0.6 && git push origin v1.0.6    # 再推 tag
 ```
 
 顺序不能反 —— 工作流检出的是默认分支，tag 先到会用新版本号打出旧代码的包。已加校验，顺序错了会直接失败并给出修复命令。
@@ -126,6 +126,7 @@ scripts/
   release.py        写版本号 → 打包 → sha256 → 更新 appcast
   sync_catalog.py   从 ElevenLabs 同步模型/音色到 info.json
   verify_api.py     拿真实 Key 实测 API 行为，核实文档说法
+  resolve_voices.py 把官方替换表的 19 个新音色名解析成真 voice_id（只读）
 ```
 
 待验证事项与 2026-12-31 的应对见 [HANDOFF.md](HANDOFF.md)。
