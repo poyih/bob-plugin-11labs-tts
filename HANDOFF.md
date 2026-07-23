@@ -133,8 +133,12 @@ not_logged_in                HTTP 401  ← 无密钥打 /v1/shared-voices?search
 > 写一行日志提示到期与接班音色（不拦截，年底前仍可用）。
 > `sync_catalog.py` 默认**不再同步音色**（`/v1/voices` 只返回退役的 21 个，同步会把
 > 菜单打回原形），需要时用 `--sync-voices`。
-> **仍未实证**：这 19 个对**免费档**能否合成。API 字段 `free_users_allowed=True`，
-> 但无免费档 Key 未实测。若该字段不准，免费用户会立刻全坏 —— 退路是自定义 Voice ID。
+> **payg 实测 19/19 可用**（2026-07-23，`resolve_voices.py --probe`）：19 个 ID 逐个
+> 实打 2 字符全部 HTTP 200，返回 1794~2944 bytes 合法 mp3。**该结论的边界要说清**：
+> 它证明这 19 个 ID 是活的、且本账号能合成，**不证明它们是「正确的接班音色」**——
+> 拿一个搜错的同名音色去打同样会 200。ID 正确性的依据始终是官方表自身的超链接。
+> **仍未实证**：对**免费档**能否合成。API 字段 `free_users_allowed=True`，但无免费档
+> Key 未实测。若该字段不准，免费用户会立刻全坏 —— 退路是自定义 Voice ID。
 
 
 **官方原文**（elevenlabs.io/docs/overview/capabilities/voices）：
@@ -196,7 +200,7 @@ not_logged_in                HTTP 401  ← 无密钥打 /v1/shared-voices?search
 
 **接班音色对免费档大概率可用（未实测）**：payg 账号搜到的官方对应音色，元数据均为 `cat=high_quality`、`free_users_allowed=True`、无计费倍率。这与文档那句「Voice Library voices are not available via the API to free tier users」冲突 —— 合理解释是音色库逐个音色带 `free_users_allowed` 标志，文档那句是过度简化。**但这是 API 字段，不是免费档真实合成过**，无免费档 Key 未能实证。另注意同名冒牌里有 `rate=2.0` 的（Darian-Velvety、Jade-Calm、Jade-Millennial、Wyatt 裸名），选错**双倍计费**。
 
-用 `python3 scripts/resolve_voices.py --probe` 可对 19 个 ID 逐个实打 2 字符，确认本账号真能合成（约 1~2 credits/个）。
+**payg 实测 19/19 全部 200**（2026-07-23，`--probe`，返回 1794~2944 bytes 合法 mp3），含库搜会搞错的 Kellan `cymHWdiF8WjUCg6vvFxx`。换个账号复验：`python3 scripts/resolve_voices.py --probe`（约 1~2 credits/个）。
 
 **付费 vs 免费的迁移难度不同（关键结论）**：
 - 付费档（含 payg）：到期后迁移**容易**——付费档可通过 API 使用 Voice Library 音色（实测 Aria 200）和接班的新 Default 音色，换一批 voice ID 填进「自定义 Voice ID」或更新菜单即可继续用。
