@@ -4,7 +4,7 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.6，功能可用。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.7，功能可用。
 
 问题不在功能，在于**一批结论只有文档依据、没有真机验证**。这个项目已经因此摔过三次：
 
@@ -160,11 +160,9 @@ not_logged_in                HTTP 401  ← 无密钥打 /v1/shared-voices?search
 
 出处说明：help.elevenlabs.io 直连被 Zendesk **403**，逐字原文取自 docs 镜像 `/docs/help-center/product/voice-customization/my-voices/what-are-default-voices.md`（**这比之前的「搜索 snippet」出处更硬**，第 138 段那两句引文同样已由该镜像逐字复核）。另注：该文**没有**「in perpetuity」那句，那句在 `capabilities/voices` 页。
 
-**⚠️ 网上流传的那份 19 个新音色 ID，已被其作者本人撤回，不要再用。** 主证据是 LiveKit 社区帖 `community.livekit.io/t/new-default-elevenlabs-voices/459` 第 8 楼（Mike Saunders, 2026-04-22）原文：
+**⚠️ 网上流传着几份新音色 ID 表，一律不要采信，以下方官方链接提取的为准。** 那些表大多是「拿官方公告里的名字去 API 搜、挑一个同名的」得来的 —— 音色库里同名音色极多（Jade 有 10 个、Eddie 有 5 个），搜错是常态。同一批传播里还夹带着「接班音色是音色库音色、免费档 API 用不了」之类的说法，同样没有依据。
 
-> "The announcement email only had names so I guess I pulled in the wrong codes from the API."
-
-官方公告只给了名字，他按名字去 API 搜，搜到了**同名的错误音色**。这也解释了同帖第 5 楼另一位（Tom Shapland）说「这些是 shared library / Pro Cloned 音色、免费档不可用」—— 他查的正是那批错 ID；而他本人在第 7 楼（3-19）已给出官方文档、说这批音色可通过 LiveKit Inference 使用。**所以「接班音色是音色库音色、API 用不了」并不成立**，别把该帖中段的争议当结论（本项目曾一度如此，源于一轮 verify 工作流只跑了取证、证伪阶段被中断）。
+本项目也一度采信过这类二手说法，根因是一轮 verify 工作流只跑完取证、证伪阶段被中断 —— **未经证伪的取证输出不能当结论**。
 
 **ID 已拿到，出处是官方表自己的超链接（2026-07-23）。** 表格正文只有名字，但**每个新音色名本身是超链接**，指向 `r.contact.elevenlabs.io` 跟踪页；该页返回 **HTTP 405 且不发 Location 头**（`curl -L` 跟不到底，必须读正文），正文的 meta-refresh 目标就是 `https://elevenlabs.io/app/voice-library?search=<voice_id>`。19 个全部提取成功，已固化在 `scripts/resolve_voices.py` 的 `REPLACEMENTS`：
 
@@ -194,7 +192,7 @@ not_logged_in                HTTP 401  ← 无密钥打 /v1/shared-voices?search
 
 **⚠️ 千万别改用「按名字去音色库搜」来取这些 ID。** 实测 payg 账号搜 `Kellan`：只返回一个候选 `ogqEVaDb8zHocDItWo7S`（"Kellan - Resonant, Smooth and Confident"，`cat=high_quality`、`free=True` —— 信号看起来完全干净、毫无歧义），**但它不是官方那个**。按名字搜会静悄悄挑错且不给任何警示。其余 18 个两法一致。`resolve_voices.py` 默认会做这个交叉校验并对分歧告警。
 
-顺带修正前一版的判断：那份「被作者撤回」的流传 ID 表，经与官方链接逐条比对 **18/18 全对**（它只是缺 Kellan）。作者的自我撤回是多余的认错，同帖「这些是 Pro Cloned、免费档用不了」的说法也不成立。**教训是：论坛说法和作者撤回都不算数，只有官方链接 + API 实测算数。**
+**教训：二手说法一律不算数，只有官方链接 + API 实测算数。** 流传的表偶尔碰巧对，但你无从分辨对错——本项目实测的 Kellan 分歧就是证据。
 
 另有两处官方表文字与音色库现名不符，**ID 以官方链接为准**：Eddie（表写 "Helpful and Comforting"，库中现名 "Natural and Helpful"）、Finley（库中名多一个空格）。
 
