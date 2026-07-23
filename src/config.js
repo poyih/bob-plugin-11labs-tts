@@ -199,6 +199,36 @@ var LEGACY_VOICES = {
     "XB0fDUnXU5powFXDhCwa": "Charlotte"
 };
 
+// 2026-12-31 退役的 21 个 Default 音色 → 官方指定的接班音色。
+// v1.0.6 起菜单已换成接班音色，这张表只用于**提醒**：Bob 会保留用户此前保存的
+// 选项值，即使该值已从 menuValues 移除也照旧发出（界面却显示成菜单第一项）。
+// 所以老用户升级后仍会发老音色 —— 现在还能用，到期即断。命中就写一行日志。
+// successor 为 null 表示官方没给接班音色（Bella、Adam）。
+var RETIRING_VOICES = {
+    CwhRBWXzGAHq8TQ4Fs17: { name: "Roger", successor: "Darian" },
+    EXAVITQu4vr4xnSDxMaL: { name: "Sarah", successor: "Talia" },
+    FGY2WhTYpPnrIDTdsKH5: { name: "Laura", successor: "Elara" },
+    IKne3meq5aSn9XLyUdCD: { name: "Charlie", successor: "Baxter" },
+    JBFqnCBsd6RMkjVDRZzb: { name: "George", successor: "Eldrin" },
+    N2lVS1w4EtoT3dr4eOWO: { name: "Callum", successor: "Kellan" },
+    SAz9YHcvj6GT2YYXdXww: { name: "River", successor: "Elowen" },
+    SOYHLrjzK2X1ezoPC6cr: { name: "Harry", successor: "Kaelen" },
+    TX3LPaxmHKxFdv7VOQHJ: { name: "Liam", successor: "Lawrence" },
+    Xb7hH8MSUJpSbSDYk0k2: { name: "Alice", successor: "Alicia" },
+    XrExE9yKIg1WjnnlVkGX: { name: "Matilda", successor: "Maisie" },
+    bIHbv24MWmeRgasZH58o: { name: "Will", successor: "Warren" },
+    cgSgspJ2msm6clMCkdW9: { name: "Jessica", successor: "Jade" },
+    cjVigY5qzO86Huf0OWal: { name: "Eric", successor: "Eddie" },
+    iP95p4xoKVk53GoZ742B: { name: "Chris", successor: "Caleb" },
+    nPczCjzI2devNBz1zQrb: { name: "Brian", successor: "Sawyer" },
+    onwK4e9ZLuTAKqWW03F9: { name: "Daniel", successor: "Finley" },
+    pFZP5JQG7iQjIQuC4Bku: { name: "Lily", successor: "Florence" },
+    pqHfZKP75CvOlQylNhV4: { name: "Bill", successor: "Wyatt" },
+    // 官方替换表里没有这两个，到期后无指定接班音色
+    hpp4J3VqNfWAUOO0d1Us: { name: "Bella", successor: null },
+    pNInz6obpgDQGcFmaJgB: { name: "Adam", successor: null }
+};
+
 var langMap = new Map(LANGUAGES.map(function (item) {
     return [item[0], item[1]];
 }));
@@ -208,6 +238,7 @@ exports.MODELS = MODELS;
 exports.FALLBACK_MODEL = FALLBACK_MODEL;
 exports.LANGUAGES = LANGUAGES;
 exports.LEGACY_VOICES = LEGACY_VOICES;
+exports.RETIRING_VOICES = RETIRING_VOICES;
 exports.langMap = langMap;
 exports.MODEL_LANGUAGES = MODEL_LANGUAGES;
 exports.modelAcceptsLanguage = modelAcceptsLanguage;

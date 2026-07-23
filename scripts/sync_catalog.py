@@ -42,9 +42,9 @@ MODEL_TITLES = {
 MODEL_ORDER = ["eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2"]
 
 # 官方原文：「All our Default voices will expire on December 31, 2026」——
-# 账号里这 21 个 Default(premade) 音色全部到期。接班音色情况官方未给出可查证的
-# 对照表（流传的 19 行替换表来自第三方杂志，不可信），所以这里只标「停用」、
-# 不臆测哪个音色有没有接班。https://elevenlabs.io/docs/overview/capabilities/voices
+# 这 21 个 Default(premade) 音色全部到期。v1.0.6 起菜单已换成官方指定的接班音色
+# （见下方 SUCCESSOR_VOICES），这张表只在老音色被同步回菜单时用于打「停用」标注。
+# https://elevenlabs.io/docs/overview/capabilities/voices
 RETIRING_VOICES = {
     "hpp4J3VqNfWAUOO0d1Us",  # Bella
     "pNInz6obpgDQGcFmaJgB",  # Adam
@@ -70,9 +70,36 @@ RETIRING_VOICES = {
 }
 RETIRING_SUFFIX = "（2026-12-31 停用）"
 
-# 音色中文标题。译自 /v1/voices 当前返回的 name + labels，不是沿用 2025 年
-# 那份 —— 有几个音色的定位已经改了（例如 Callum 从「跨大西洋口音」变成美式）。
-# 表里没有的音色（比如你自己用 Voice Design 建的）保留 API 原文。
+# 官方接班音色（2026-12-31 后仍可用），按官方替换表顺序。
+# ⚠️ 这 19 个**不在** /v1/voices 里（它只返回 21 个即将退役的 premade），
+# 所以 --replace 会把它们整个冲掉、把老音色搬回来。为此：
+#   1. 默认不同步音色（需显式 --sync-voices），见 main()
+#   2. 这里给它们固定标题与顺序，overlay 每次重新套用，保证幂等
+SUCCESSOR_VOICES = [
+    ("gOupLcAkjEnguROwi4oS", "Darian — 温暖沉稳的讲述者（接替 Roger）"),
+    ("OZ0L6eISlOejga3XjDFt", "Talia — 温柔轻缓的引导者（接替 Sarah）"),
+    ("WQP7cQUF5aAS6Axh5yaa", "Elara — 清脆利落的专业旁白（接替 Laura）"),
+    ("jSuBIjxMKhqIfb0wCK1F", "Baxter — 澳式、冷静克制（接替 Charlie）"),
+    ("6WwXjDDEMyNmFG95zycZ", "Eldrin — 清晰的英式男中音（接替 George）"),
+    ("cymHWdiF8WjUCg6vvFxx", "Kellan — 随和亲切的日常口吻（接替 Callum）"),
+    ("dvbL7qkNGZY1IqPGZAjM", "Elowen — 明快现代的旁白（接替 River）"),
+    ("10NkTYmU7tSz3Kkl3Lex", "Kaelen — 青涩的战士感（接替 Harry）"),
+    ("ktkP7Nsj67dw2zcplQYt", "Lawrence — 明亮、条理清晰（接替 Liam）"),
+    ("BFd5oBc2DDna33pSi4Gf", "Alicia — 干练的国际主播腔（接替 Alice）"),
+    ("QtY3JBOUKEB5xzrRfOKc", "Maisie — 亲切随和、邻家感（接替 Matilda）"),
+    ("7QN34D2r3hCNwbOYIeK0", "Warren — 松弛而酷（接替 Will）"),
+    ("g7LVvkPWALzPxOQbF6OE", "Jade — 明快自然（接替 Jessica）"),
+    ("l7kNoIfnJKPg7779LI2t", "Eddie — 热心、令人安心（接替 Eric）"),
+    ("AaOhDHYJ1XLZk74lXhdE", "Caleb — 值得信赖的引路人（接替 Chris）"),
+    ("8dEUmyPMdDdK91vboYih", "Sawyer — 深夜讲故事的嗓音（接替 Brian）"),
+    ("fnYMz3F5gMEDGMWcH1ex", "Finley — 咬字清晰的主播腔（接替 Daniel）"),
+    ("22N9cF8z0o7y23njdyaY", "Florence — 富有氛围感的讲述者（接替 Lily）"),
+    ("FrS6cKLB1wg4WYgPa9GW", "Wyatt — 老练的导师感（接替 Bill）"),
+]
+SUCCESSOR_TITLES = dict(SUCCESSOR_VOICES)
+
+# 音色中文标题。接班音色见上；下面这批是 2026-12-31 退役的老音色，留着是为了
+# 万一有人把它们同步回菜单时标题不至于变回英文。
 VOICE_TITLES = {
     "pNInz6obpgDQGcFmaJgB": "Adam — 男声 · 美式 · 强势坚定",
     "hpp4J3VqNfWAUOO0d1Us": "Bella — 女声 · 美式 · 专业、明亮温暖",
@@ -181,12 +208,15 @@ def apply_overlay(info):
         if entry["value"] == CUSTOM_VOICE:
             tail.append(entry)
             continue
-        retiring = entry["value"] in RETIRING_VOICES
+        vid = entry["value"]
+        retiring = vid in RETIRING_VOICES
         if retiring:
             retiring_count += 1
-        # 表里有中文标题就用中文；没有（自建音色等）保留 API 原文
-        title = VOICE_TITLES.get(entry["value"]) or entry["title"].replace(RETIRING_SUFFIX, "")
-        if retiring:
+        # 接班音色用固定标题；老音色用 VOICE_TITLES；都没有（自建音色）保留 API 原文
+        title = (SUCCESSOR_TITLES.get(vid)
+                 or VOICE_TITLES.get(vid)
+                 or entry["title"].replace(RETIRING_SUFFIX, ""))
+        if retiring and not title.endswith(RETIRING_SUFFIX):
             title += RETIRING_SUFFIX
         if title != entry["title"]:
             entry["title"] = title
@@ -197,8 +227,9 @@ def apply_overlay(info):
     # 按标题字母序，把手工排序冲掉。__custom__ 始终排到最末。
     voice_option["menuValues"] = body + tail
 
+    successors = sum(1 for e in body if e["value"] in SUCCESSOR_TITLES)
     print(f"\n展示层：模型 {len(kept)} 个，音色 {len(body)} 个"
-          f"（{len(body) - retiring_count} 个长期可用，{retiring_count} 个 2026-12-31 停用）")
+          f"（接班音色 {successors} 个，2026-12-31 退役 {retiring_count} 个）")
     return touched
 
 
@@ -233,6 +264,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="只打印差异")
     parser.add_argument("--models-only", action="store_true")
     parser.add_argument("--voices-only", action="store_true")
+    parser.add_argument("--sync-voices", action="store_true",
+                        help="显式同步音色（默认跳过，见 do_voices 处注释）")
     parser.add_argument(
         "--overlay-only",
         action="store_true",
@@ -255,7 +288,13 @@ def main():
         info = json.load(fp)
 
     do_models = not args.voices_only and not args.overlay_only
-    do_voices = not args.models_only and not args.overlay_only
+    # 默认**不**同步音色：菜单已换成官方接班音色，而 /v1/voices 只返回 21 个
+    # 即将退役的 premade（接班音色是音色库音色，不在其中）。同步会把老音色搬回
+    # 菜单、甚至 --replace 时整个冲掉接班音色。需要时用 --sync-voices 显式开启。
+    do_voices = (args.voices_only or args.sync_voices) and not args.overlay_only
+    if not do_voices and not args.models_only and not args.overlay_only:
+        print("跳过音色同步：菜单是官方接班音色，/v1/voices 里没有它们。"
+              "确需同步请加 --sync-voices\n")
     changed = False
 
     if do_models:

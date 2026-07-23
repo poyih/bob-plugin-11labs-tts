@@ -49,98 +49,90 @@
             "identifier": "voice",
             "type": "menu",
             "title": "音色",
-            "defaultValue": "hpp4J3VqNfWAUOO0d1Us",
+            "defaultValue": "WQP7cQUF5aAS6Axh5yaa",
             "menuValues": [
                 {
-                    "title": "Bella — 女声 · 美式 · 专业、明亮温暖（2026-12-31 停用）",
-                    "value": "hpp4J3VqNfWAUOO0d1Us"
+                    "title": "Darian — 温暖沉稳的讲述者（接替 Roger）",
+                    "value": "gOupLcAkjEnguROwi4oS"
                 },
                 {
-                    "title": "Jessica — 女声 · 美式 · 俏皮明亮、温暖（2026-12-31 停用）",
-                    "value": "cgSgspJ2msm6clMCkdW9"
+                    "title": "Talia — 温柔轻缓的引导者（接替 Sarah）",
+                    "value": "OZ0L6eISlOejga3XjDFt"
                 },
                 {
-                    "title": "Laura — 女声 · 美式 · 热情、古灵精怪（2026-12-31 停用）",
-                    "value": "FGY2WhTYpPnrIDTdsKH5"
+                    "title": "Elara — 清脆利落的专业旁白（接替 Laura）",
+                    "value": "WQP7cQUF5aAS6Axh5yaa"
                 },
                 {
-                    "title": "Matilda — 女声 · 美式 · 博学、专业（2026-12-31 停用）",
-                    "value": "XrExE9yKIg1WjnnlVkGX"
+                    "title": "Baxter — 澳式、冷静克制（接替 Charlie）",
+                    "value": "jSuBIjxMKhqIfb0wCK1F"
                 },
                 {
-                    "title": "Sarah — 女声 · 美式 · 成熟沉稳、令人安心（2026-12-31 停用）",
-                    "value": "EXAVITQu4vr4xnSDxMaL"
+                    "title": "Eldrin — 清晰的英式男中音（接替 George）",
+                    "value": "6WwXjDDEMyNmFG95zycZ"
                 },
                 {
-                    "title": "Alice — 女声 · 英式 · 清晰、像老师（2026-12-31 停用）",
-                    "value": "Xb7hH8MSUJpSbSDYk0k2"
+                    "title": "Kellan — 随和亲切的日常口吻（接替 Callum）",
+                    "value": "cymHWdiF8WjUCg6vvFxx"
                 },
                 {
-                    "title": "Lily — 女声 · 英式 · 丝绒质感、演员腔（2026-12-31 停用）",
-                    "value": "pFZP5JQG7iQjIQuC4Bku"
+                    "title": "Elowen — 明快现代的旁白（接替 River）",
+                    "value": "dvbL7qkNGZY1IqPGZAjM"
                 },
                 {
-                    "title": "Adam — 男声 · 美式 · 强势坚定（2026-12-31 停用）",
-                    "value": "pNInz6obpgDQGcFmaJgB"
+                    "title": "Kaelen — 青涩的战士感（接替 Harry）",
+                    "value": "10NkTYmU7tSz3Kkl3Lex"
                 },
                 {
-                    "title": "Bill — 男声 · 美式 · 睿智成熟、均衡（2026-12-31 停用）",
-                    "value": "pqHfZKP75CvOlQylNhV4"
+                    "title": "Lawrence — 明亮、条理清晰（接替 Liam）",
+                    "value": "ktkP7Nsj67dw2zcplQYt"
                 },
                 {
-                    "title": "Brian — 男声 · 美式 · 低沉浑厚、令人安定（2026-12-31 停用）",
-                    "value": "nPczCjzI2devNBz1zQrb"
+                    "title": "Alicia — 干练的国际主播腔（接替 Alice）",
+                    "value": "BFd5oBc2DDna33pSi4Gf"
                 },
                 {
-                    "title": "Callum — 男声 · 美式 · 沙哑、狡黠（2026-12-31 停用）",
-                    "value": "N2lVS1w4EtoT3dr4eOWO"
+                    "title": "Maisie — 亲切随和、邻家感（接替 Matilda）",
+                    "value": "QtY3JBOUKEB5xzrRfOKc"
                 },
                 {
-                    "title": "Chris — 男声 · 美式 · 有魅力、接地气（2026-12-31 停用）",
-                    "value": "iP95p4xoKVk53GoZ742B"
+                    "title": "Warren — 松弛而酷（接替 Will）",
+                    "value": "7QN34D2r3hCNwbOYIeK0"
                 },
                 {
-                    "title": "Eric — 男声 · 美式 · 流畅、可信赖（2026-12-31 停用）",
-                    "value": "cjVigY5qzO86Huf0OWal"
+                    "title": "Jade — 明快自然（接替 Jessica）",
+                    "value": "g7LVvkPWALzPxOQbF6OE"
                 },
                 {
-                    "title": "Harry — 男声 · 美式 · 凶悍战士感（2026-12-31 停用）",
-                    "value": "SOYHLrjzK2X1ezoPC6cr"
+                    "title": "Eddie — 热心、令人安心（接替 Eric）",
+                    "value": "l7kNoIfnJKPg7779LI2t"
                 },
                 {
-                    "title": "Liam — 男声 · 美式 · 有活力、自媒体口吻（2026-12-31 停用）",
-                    "value": "TX3LPaxmHKxFdv7VOQHJ"
+                    "title": "Caleb — 值得信赖的引路人（接替 Chris）",
+                    "value": "AaOhDHYJ1XLZk74lXhdE"
                 },
                 {
-                    "title": "Roger — 男声 · 美式 · 松弛随性、声音浑厚（2026-12-31 停用）",
-                    "value": "CwhRBWXzGAHq8TQ4Fs17"
+                    "title": "Sawyer — 深夜讲故事的嗓音（接替 Brian）",
+                    "value": "8dEUmyPMdDdK91vboYih"
                 },
                 {
-                    "title": "Will — 男声 · 美式 · 松弛乐观（2026-12-31 停用）",
-                    "value": "bIHbv24MWmeRgasZH58o"
+                    "title": "Finley — 咬字清晰的主播腔（接替 Daniel）",
+                    "value": "fnYMz3F5gMEDGMWcH1ex"
                 },
                 {
-                    "title": "Daniel — 男声 · 英式 · 沉稳播音腔（2026-12-31 停用）",
-                    "value": "onwK4e9ZLuTAKqWW03F9"
+                    "title": "Florence — 富有氛围感的讲述者（接替 Lily）",
+                    "value": "22N9cF8z0o7y23njdyaY"
                 },
                 {
-                    "title": "George — 男声 · 英式 · 温暖、擅长讲故事（2026-12-31 停用）",
-                    "value": "JBFqnCBsd6RMkjVDRZzb"
-                },
-                {
-                    "title": "Charlie — 男声 · 澳式 · 低沉自信、有活力（2026-12-31 停用）",
-                    "value": "IKne3meq5aSn9XLyUdCD"
-                },
-                {
-                    "title": "River — 中性声 · 美式 · 放松、中立、偏说明性（2026-12-31 停用）",
-                    "value": "SAz9YHcvj6GT2YYXdXww"
+                    "title": "Wyatt — 老练的导师感（接替 Bill）",
+                    "value": "FrS6cKLB1wg4WYgPa9GW"
                 },
                 {
                     "title": "▸ 使用下方填写的自定义 Voice ID",
                     "value": "__custom__"
                 }
             ],
-            "desc": "这些是 ElevenLabs 的 Default 音色，官方已宣布 2026-12-31 全部失效，到期后请改用下方的自定义 Voice ID。官方尚未给出可查证的接班音色对照表，所以不要指望到期后能直接替换一批 ID 继续用；新注册账号也可能根本用不了这些 Default 音色。免费订阅的限制是音色库音色不能通过 API 使用，与音色在不在你账号里无关。"
+            "desc": "这些是 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的接班音色，可长期使用。名称与描述取自官方替换表。若某个音色报「当前订阅无法使用」，说明你的订阅档位不能通过 API 使用音色库音色，请改用下方的自定义 Voice ID 填你账号内的音色。"
         },
         {
             "identifier": "customVoiceId",

@@ -451,6 +451,18 @@ function tts(query, completion) {
                 };
             }
 
+            // 老音色仍能用到 2026-12-31，不拦截，但要留痕：Bob 会保留用户此前保存
+            // 的选项值，菜单换成接班音色后界面显示新的、实际发的仍是老的。
+            var retiring = config.RETIRING_VOICES[voiceId];
+            if (retiring) {
+                logInfo(
+                    "warn 音色 " + retiring.name + "（" + voiceId + "）将于 2026-12-31 失效" +
+                    (retiring.successor
+                        ? "，官方接班音色为 " + retiring.successor + "，请在设置里改选"
+                        : "，官方未指定接班音色，请在设置里另选一个")
+                );
+            }
+
             var text = typeof query.text === "string" ? query.text : "";
             if (!trimmed(text)) {
                 throw { type: "param", message: "没有可合成的文本" };

@@ -2,7 +2,7 @@
 
 给 [Bob](https://bobtranslate.com) 用的 ElevenLabs TTS 插件，划词之后直接用 AI 语音朗读。
 
-> ⚠️ 菜单里的 21 个音色将于 **2026-12-31** 全部失效。官方 19 个接班音色的 voice_id 已提取并存档，见 [HANDOFF.md](HANDOFF.md) 或跑 `python3 scripts/resolve_voices.py --offline`。
+> v1.0.6 起，音色菜单已换成 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的 **19 个接班音色**，可长期使用。老音色仍能用到年底：若你此前选过，Bob 会保留旧配置继续发送，插件会在日志里提示到期与对应的接班音色。
 
 ## 特点
 
@@ -16,7 +16,7 @@
 
 **84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
-**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 49 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
+**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 51 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
 ## 安装
 
@@ -34,7 +34,7 @@ make install
 |---|---|
 | API Key | 密文输入，只发给 `api.elevenlabs.io` |
 | 模型 | 默认 Flash v2.5。要更好的情感表现换 Multilingual v2 或 v3（更慢更贵） |
-| 音色 | 21 个官方音色；选「▸ 使用下方填写的自定义 Voice ID」可用自己的音色 |
+| 音色 | 19 个官方接班音色（名称与描述取自官方替换表）；选「▸ 使用下方填写的自定义 Voice ID」可用自己的音色 |
 | 自定义 Voice ID | 填了就优先生效。在 elevenlabs.io 音色详情页复制 Voice ID |
 | 音频格式 | 朗读场景 32~64kbps 通常够用，还能明显缩短等待 |
 | 稳定性 / 相似度 / 风格 / 语速 / Speaker Boost | 默认「跟随音色自带设置」，即完全不覆盖官网上的配置 |

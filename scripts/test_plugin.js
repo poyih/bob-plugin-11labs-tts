@@ -145,7 +145,7 @@ var plugin = globalThis.exports;
 var BASE_OPTIONS = {
     apiKey: "sk_test",
     model: "eleven_flash_v2_5",
-    voice: "hpp4J3VqNfWAUOO0d1Us",
+    voice: "WQP7cQUF5aAS6Axh5yaa",
     customVoiceId: "",
     outputFormat: "mp3_44100_128",
     stability: "",
@@ -191,7 +191,7 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "param", "自定义音色为空时报 param");
 
     // 4. 自定义 Voice ID 覆盖菜单选择
-    withOptions({ voice: "hpp4J3VqNfWAUOO0d1Us", customVoiceId: "  myCloneVoice  " });
+    withOptions({ voice: "WQP7cQUF5aAS6Axh5yaa", customVoiceId: "  myCloneVoice  " });
     nextResponse = audioResponse(200);
     logs = [];
     r = await speak(EN);
@@ -270,7 +270,7 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "notFound", "voice_not_found 映射为 notFound");
     // main.js 的「实际发出的 Voice ID」追加有三个分支（notFound ‖ 402 ‖ 404），
     // 404/notFound 这条也必须带上真实 ID——曾因只测 402 而漏掉，删掉本断言测试仍过。
-    ok(r.error && r.error.message.indexOf("hpp4J3VqNfWAUOO0d1Us") > 0 &&
+    ok(r.error && r.error.message.indexOf("WQP7cQUF5aAS6Axh5yaa") > 0 &&
         r.error.message.indexOf("音色菜单") > 0,
         "404 notFound 报错也带上实际发出的 Voice ID 及来源");
 
@@ -284,7 +284,7 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.type === "api" && r.error.message.indexOf("音色库音色") > 0,
         "402 说清限制是音色库来源，而非「不在你账号里」");
-    ok(r.error.message.indexOf("hpp4J3VqNfWAUOO0d1Us") > 0 && r.error.message.indexOf("音色菜单") > 0,
+    ok(r.error.message.indexOf("WQP7cQUF5aAS6Axh5yaa") > 0 && r.error.message.indexOf("音色菜单") > 0,
         "402 报错里带上实际发出的 Voice ID 及其来源");
 
     // 15b. 400 + max_character_limit_exceeded 不能说成订阅问题（曾经的 regression）
@@ -406,6 +406,22 @@ var EN = { text: "hello world", lang: "en" };
         plugin.pluginValidate(resolve);
     });
     ok(v.result === true, "pluginValidate 遇缺权限判通过（TTS 不受影响）");
+
+    // 26b. 退役音色仍能用，但要写警告日志（Bob 会保留用户旧配置，界面显示新音色、
+    //      实际发的仍是老音色 —— 这条日志是唯一的提示）
+    withOptions({ customVoiceId: "EXAVITQu4vr4xnSDxMaL" });   // Sarah
+    nextResponse = audioResponse(200);
+    logs = [];
+    r = await speak(EN);
+    ok(r.result && loggedLine("warn 音色 Sarah") && loggedLine("Talia"),
+        "退役音色仍可合成，但日志提示到期与接班音色");
+
+    withOptions({ customVoiceId: "hpp4J3VqNfWAUOO0d1Us" });   // Bella，官方无接班
+    nextResponse = audioResponse(200);
+    logs = [];
+    await speak(EN);
+    ok(loggedLine("warn 音色 Bella") && loggedLine("未指定接班音色"),
+        "无接班音色的退役音色提示另选");
 
     // 27. voice_settings 按模型能力门控（/v1/models: style / speaker_boost 仅 multilingual_v2）
     // v3：style 与 speaker_boost 丢弃，stability / speed / similarity 仍下发
