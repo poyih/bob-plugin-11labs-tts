@@ -200,9 +200,9 @@ var LEGACY_VOICES = {
 };
 
 // 2026-12-31 退役的 21 个 Default 音色 → 官方指定的接班音色。
-// v1.0.6 起菜单已换成接班音色，这张表只用于**提醒**：Bob 会保留用户此前保存的
+// v1.0.6 起菜单已换成接班音色，这张表用于兼容旧配置：Bob 会保留用户此前保存的
 // 选项值，即使该值已从 menuValues 移除也照旧发出（界面却显示成菜单第一项）。
-// 所以老用户升级后仍会发老音色 —— 现在还能用，到期即断。命中就写一行日志。
+// 所以老用户升级后仍会发老音色。截止日前写日志提醒，截止后由 main.js 明确拦截。
 // successor 为 null 表示官方没给接班音色（Bella、Adam）。
 var RETIRING_VOICES = {
     CwhRBWXzGAHq8TQ4Fs17: { name: "Roger", successor: "Darian" },

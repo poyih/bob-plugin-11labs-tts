@@ -123,6 +123,29 @@ function jsonResponse(statusCode, obj) {
     };
 }
 
+function textResponse(statusCode, text, mimeType) {
+    return {
+        response: {
+            statusCode: statusCode,
+            headers: { "content-type": mimeType || "text/plain" }
+        },
+        data: text,
+        rawData: makeData(utf8Bytes(text))
+    };
+}
+
+function binaryResponse(statusCode, mimeType) {
+    var data = makeData([0x49, 0x44, 0x33, 0x04]);
+    return {
+        response: {
+            statusCode: statusCode,
+            headers: { "content-type": mimeType }
+        },
+        data: data,
+        rawData: data
+    };
+}
+
 // ------------------------------------------------------------ 加载插件
 
 globalThis.exports = {};
@@ -199,11 +222,14 @@ var EN = { text: "hello world", lang: "en" };
     ok(loggedLine("voice=myCloneVoice(custom)"), "日志记录实际使用的 voice 及其来源");
     ok(loggedLine("success status=200"), "成功时写一条 success 日志");
 
-    // 4b. Legacy 音色提前拦截
+    // 4b. Legacy 音色不能一刀切拦截：付费/按量账户实测仍可能成功
     withOptions({ customVoiceId: "21m00Tcm4TlvDq8ikWAM" });
+    nextResponse = audioResponse(200);
+    logs = [];
     r = await speak(EN);
-    ok(r.error && r.error.type === "param" && r.error.message.indexOf("Legacy") > 0,
-        "Legacy 音色在发请求前就被拦下");
+    ok(r.result && lastRequest.url.indexOf("21m00Tcm4TlvDq8ikWAM") > 0,
+        "Legacy 音色交给 API 判定，不在客户端误拦截");
+    ok(loggedLine("Legacy 音色"), "Legacy 音色仍会写兼容性警告");
 
     // 5. 超出模型字符上限
     var long = new Array(10050).join("x") + "yyyy";
@@ -231,6 +257,15 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.result && r.result.type === "base64" && r.result.value.length > 0, "成功时返回 base64 音频");
     ok(lastRequest.url.indexOf("output_format=mp3_44100_128") > 0, "URL 带上 output_format");
     ok(lastRequest.header["xi-api-key"] === "sk_test", "带上 xi-api-key 请求头");
+    ok(lastRequest.timeout === 50 &&
+        lastRequest.timeout < plugin.pluginTimeoutInterval(),
+        "HTTP 超时早于 Bob 宿主超时，错误有机会回传");
+
+    withOptions({ outputFormat: "pcm 16000&unexpected=1" });
+    nextResponse = audioResponse(200);
+    await speak(EN);
+    ok(lastRequest.url.indexOf("output_format=pcm%2016000%26unexpected%3D1") > 0,
+        "output_format 作为查询参数被完整编码");
 
     // 9. 默认不覆盖音色自带设置
     ok(lastRequest.body.voice_settings === undefined, "未设置时不下发 voice_settings");
@@ -304,10 +339,27 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && !r.result, "2xx 但响应不是音频时报错而不是播放乱码");
 
-    // 16. 网络错误
+    nextResponse = textResponse(200, "<html>gateway</html>", "text/html; charset=utf-8");
+    r = await speak(EN);
+    ok(r.error && r.error.message.indexOf("不是音频") > 0,
+        "2xx HTML/文本响应不会被当成音频");
+
+    nextResponse = binaryResponse(200, "application/json");
+    r = await speak(EN);
+    ok(r.error && !r.result, "2xx 二进制体但 Content-Type 非音频时仍拒绝");
+
+    // 16b. 网络错误
     nextResponse = { error: { message: "timed out" }, response: null };
     r = await speak(EN);
     ok(r.error && r.error.type === "network", "网络失败映射为 network");
+
+    nextResponse = { response: null, data: null };
+    r = await speak(EN);
+    ok(r.error && r.error.type === "network", "缺失 HTTP 响应时也映射为 network");
+
+    nextResponse = Promise.reject(null);
+    r = await speak(EN);
+    ok(r.error && r.error.type === "unknown", "运行时抛出 null 时也能稳定回传错误");
 
     // 17. 空音频（$data 没有 length，只能靠 base64 是否为空判断）
     nextResponse = { response: { statusCode: 200 }, data: makeData([]), rawData: makeData([]) };
@@ -321,18 +373,46 @@ var EN = { text: "hello world", lang: "en" };
     await speak({ text: "你好", lang: "zh-Hans" });
     ok(loggedLine("warn eleven_flash_v2 仅支持英语"), "英语专用模型遇到中文时写警告日志");
 
-    // 18. pluginValidate
-    nextResponse = jsonResponse(200, { models: [] });
+    // 18. pluginValidate 用单字符真实合成验证 text_to_speech scope 与当前配置
+    withOptions({});
+    nextResponse = audioResponse(200);
     var v = await new Promise(function (resolve) {
         plugin.pluginValidate(resolve);
     });
-    ok(v.result === true, "pluginValidate 在 200 时通过");
+    ok(v.result === true, "pluginValidate 在真实 TTS 音频成功时通过");
+    ok(v.error === undefined, "pluginValidate 成功时不夹带 error 字段");
+    ok(lastRequest.method === "POST" &&
+        lastRequest.url.indexOf("/text-to-speech/WQP7cQUF5aAS6Axh5yaa?") > 0 &&
+        lastRequest.body.text === "a",
+        "pluginValidate 用单字符实际探测 TTS 端点");
+
+    nextResponse = jsonResponse(400, {
+        detail: { code: "empty_text", type: "validation_error", message: "text must not be empty" }
+    });
+    v = await new Promise(function (resolve) {
+        plugin.pluginValidate(resolve);
+    });
+    ok(v.result === false && v.error, "pluginValidate 不把参数错误当成权限验证成功");
+
+    nextResponse = textResponse(200, "<html>gateway</html>", "text/html");
+    v = await new Promise(function (resolve) {
+        plugin.pluginValidate(resolve);
+    });
+    ok(v.result === false && v.error && v.error.type === "api",
+        "pluginValidate 不把 2xx HTML 网关页误判为可用");
 
     nextResponse = jsonResponse(401, { detail: { status: "invalid_api_key", message: "bad" } });
     v = await new Promise(function (resolve) {
         plugin.pluginValidate(resolve);
     });
     ok(v.result === false && v.error.type === "secretKey", "pluginValidate 在 401 时报 secretKey");
+
+    nextResponse = { response: null, data: null };
+    v = await new Promise(function (resolve) {
+        plugin.pluginValidate(resolve);
+    });
+    ok(v.result === false && v.error.type === "network",
+        "pluginValidate 缺失 HTTP 响应时返回 network");
 
     // 19. language_code 按模型语言集门控（实测：模型对支持列表外的 code 回 400，而非「忽略」）
     withOptions({ model: "eleven_flash_v2_5" });
@@ -400,12 +480,24 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.message.indexOf("详见") < 0, "message 已含 URL 时不再重复追加");
 
-    // 26. pluginValidate：缺权限判通过（P0#3 方案 b，TTS 不受读权限影响）
-    nextResponse = jsonResponse(403, { detail: { code: "insufficient_permissions", type: "authorization_error", message: "no read scope" } });
+    // 26. pluginValidate：TTS 权限不足必须失败，不能再返回 result:true + error
+    nextResponse = jsonResponse(403, {
+        detail: { code: "insufficient_permissions", type: "authorization_error", message: "no tts scope" }
+    });
     v = await new Promise(function (resolve) {
         plugin.pluginValidate(resolve);
     });
-    ok(v.result === true, "pluginValidate 遇缺权限判通过（TTS 不受影响）");
+    ok(v.result === false && v.error && v.error.message.indexOf("缺少权限") > 0,
+        "pluginValidate 遇 TTS 权限不足时明确失败");
+
+    nextResponse = jsonResponse(422, {
+        detail: [{ loc: ["body", "text"], msg: "text cannot be empty" }]
+    });
+    v = await new Promise(function (resolve) {
+        plugin.pluginValidate(resolve);
+    });
+    ok(v.result === false && v.error && v.error.type === "param",
+        "pluginValidate 遇 422 参数错误时明确失败");
 
     // 26b. 退役音色仍能用，但要写警告日志（Bob 会保留用户旧配置，界面显示新音色、
     //      实际发的仍是老音色 —— 这条日志是唯一的提示）
@@ -415,6 +507,18 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.result && loggedLine("warn 音色 Sarah") && loggedLine("Talia"),
         "退役音色仍可合成，但日志提示到期与接班音色");
+
+    var savedDateNow = Date.now;
+    Date.now = function () {
+        return Date.UTC(2027, 0, 1);
+    };
+    withOptions({ customVoiceId: "EXAVITQu4vr4xnSDxMaL" });
+    nextResponse = audioResponse(200);
+    r = await speak(EN);
+    Date.now = savedDateNow;
+    ok(r.error && r.error.type === "notFound" &&
+        r.error.message.indexOf("已于 2026-12-31 停用") > 0,
+        "截止日后退役音色被明确拦截并提示接班音色");
 
     withOptions({ customVoiceId: "hpp4J3VqNfWAUOO0d1Us" });   // Bella，官方无接班
     nextResponse = audioResponse(200);
@@ -453,6 +557,25 @@ var EN = { text: "hello world", lang: "en" };
     var vsMul = lastRequest.body.voice_settings;
     ok(vsMul && vsMul.style === 0.3 && vsMul.use_speaker_boost === true,
         "multilingual_v2 正常下发 style / use_speaker_boost");
+
+    // 28. 通用套餐/音色访问错误保持中性，不再误报成 Creator 输出格式或免费档限制
+    withOptions({});
+    nextResponse = jsonResponse(403, {
+        detail: { code: "subscription_required", type: "authorization_error", message: "upgrade required" }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api" &&
+        r.error.message.indexOf("Creator") < 0 &&
+        r.error.message.indexOf("音频格式") < 0,
+        "通用 subscription_required 不误报成输出格式限制");
+
+    nextResponse = jsonResponse(403, {
+        detail: { code: "voice_access_denied", type: "authorization_error", message: "not shared" }
+    });
+    r = await speak(EN);
+    ok(r.error && r.error.message.indexOf("无权使用该音色") > 0 &&
+        r.error.message.indexOf("免费订阅") < 0,
+        "voice_access_denied 不擅自归因于免费订阅");
 
     print("");
     if (failures.length === 0) {

@@ -8,15 +8,15 @@
 
 **错误不会被吞掉。** ElevenLabs 失败时返回的是 JSON，不检查状态码就直接播放，表现是「点了没声音也没报错」。这里把 HTTP 状态码和 `detail.code` / `detail.status` 一起映射成 Bob 的错误类型：额度用完、Key 缺权限、音色不可用、文本超长，各报各的，并带上实际发出的 Voice ID。
 
-**音色列表过期也不影响使用。** 除了内置菜单，还有一个自定义 Voice ID 输入框，优先级更高 —— 克隆音色、Voice Design 生成的音色、菜单里还没有的新音色都能直接填。已知会被 ElevenLabs 弃用的 Legacy 音色会在发请求前拦下。
+**音色列表过期也不影响使用。** 除了内置菜单，还有一个自定义 Voice ID 输入框，优先级更高 —— 克隆音色、Voice Design 生成的音色、菜单里还没有的新音色都能直接填。Legacy 音色不会被客户端一刀切拦截；是否可用由当前账户和 API 权限决定。
 
 **不覆盖你的音色设置。** 默认完全不下发 `voice_settings`，沿用你在 ElevenLabs 网站上给该音色保存的配置；需要时再逐项覆盖稳定性、相似度、风格、语速、Speaker Boost。
 
 **默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3。音频码率可调，32kbps 能明显缩短等待。
 
-**84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 不支持该参数）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+**84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
-**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 执行 51 项断言，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
+**可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 测插件运行时、同步器、发布器和 API 核验工具，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
 ## 安装
 
@@ -26,7 +26,7 @@
 make install
 ```
 
-装好后在 Bob 的「服务」里添加「ElevenLabs 语音合成」，填 API Key 即可。API Key 在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 创建，需要勾选 `text_to_speech` 权限。
+装好后在 Bob 的「服务」里添加「ElevenLabs 语音合成」，填 API Key 即可。API Key 在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 创建，需要勾选 `text_to_speech` 权限。Bob 验证配置时会合成一个字符，用来确认该权限及当前音色、模型和格式确实可用。
 
 ## 设置项
 
@@ -43,7 +43,9 @@ make install
 
 | 提示 | 原因 |
 |---|---|
-| 当前订阅无法使用该音色（HTTP 402） | 免费订阅不能通过 API 使用音色库(Voice Library)音色。菜单里 21 个是 Default/premade 音色，对免费档可用；真正会 402 的是 Legacy 旧音色（Aria/Rachel/Charlotte，会被路由到音色库、插件已预拦截）或你在自定义框填的音色库音色。改用菜单音色或账号内的音色 |
+| 免费订阅无法通过 API 使用该音色库音色 | API 明确返回 `voice_not_allowed_for_free_users`；改用当前账户可用的音色或升级订阅 |
+| 当前 API Key 或账户无权使用该音色 | 可能是音色共享状态、所有权、套餐或资源权限；插件不会再擅自归因于免费档 |
+| 当前订阅、额度或付款状态不允许请求（HTTP 402） | 这是 API 未给出更具体错误码时的中性提示；检查订阅、额度和付款状态 |
 | API Key 无效 | Key 填错或已撤销 |
 | API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
@@ -71,8 +73,8 @@ make sync
 
 - 过滤 ElevenLabs 已标记 deprecated 的模型 —— `/v1/models` 仍会返回它们，不过滤就会被带回菜单
 - 用中文短标题覆盖 API 的长英文描述
-- 给退役名单上的音色加「2026-12-31 停用」标注，并把长期可用的排到前面
-- 校验 `defaultValue` 还在菜单里，不在就改成第一项
+- 给退役名单上的音色加「2026-12-31 停用」标注，保留既有人工顺序，并保证自定义项在末尾
+- 校验 `defaultValue` 还在菜单里；`__custom__` 是合法默认值，不会被误重置
 
 只想重新套规则而不联网：
 
@@ -90,7 +92,7 @@ python3 scripts/sync_catalog.py --overlay-only
 grep '11labs-tts.*runtime' ~/Library/Containers/com.hezongyidev.Bob/Data/Documents/MMKitLogs/MMLogs/Default/*.log | tail -1
 ```
 
-**API 探针** —— 拿真实 Key 打一遍 ElevenLabs，逼出错误 `detail.status` 的真实字符串、各模型可用性、格式订阅门槛、`voice_settings` 能否部分下发、`language_code` 到底被忽略还是报错：
+**API 探针** —— 从环境变量 `ELEVENLABS_API_KEY` 读取 Key（未设置时安全地交互输入），打真实 ElevenLabs 请求，分别记录 `detail.code` 与 `detail.status`、各模型可用性、格式订阅门槛、`voice_settings` 能否部分下发、`language_code` 到底被忽略还是报错：
 
 ```bash
 python3 scripts/verify_api.py            # 全量，约 30~40 credits
@@ -103,13 +105,16 @@ python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 发版：
 
 ```bash
-git push                                    # 必须先推代码
-git tag v1.0.6 && git push origin v1.0.6    # 再推 tag
+python3 scripts/release.py --prepare-version 1.0.8
+git add src/info.json
+git commit -m "chore: prepare v1.0.8"
+git push
+git tag v1.0.8 && git push origin v1.0.8
 ```
 
-顺序不能反 —— 工作流检出的是默认分支，tag 先到会用新版本号打出旧代码的包。已加校验，顺序错了会直接失败并给出修复命令。
+版本号必须先写入源码并提交，tag 再指向该提交。发布工作流会从 **tag checkout** 测试和打包，并校验 tag 内的 `src/info.json` 已是同版本；默认分支的独立 checkout 只负责更新 `appcast.json`，因此不会把 tag 之后的新代码混进旧版本包。
 
-GitHub Actions 会跑测试、把版本号写回 `src/info.json`、打包、算 sha256、追加 `appcast.json` 记录并创建 Release。Bob 靠 `appcast.json` 检查更新。
+GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。
 
 > 如果你的 GitHub 用户名不是 `poyih`，需要改三处：`src/info.json` 的 `homepage` / `appcast`、`scripts/release.py` 的 `--repo` 默认值。
 
@@ -123,7 +128,9 @@ src/
   icon.png    插件图标
 scripts/
   test_plugin.js    jsc 测试（桩掉 $http / $data / $option）
-  release.py        写版本号 → 打包 → sha256 → 更新 appcast
+  test_sync.py      同步器展示层与默认值测试
+  test_tools.py     发布器与 API 核验工具测试
+  release.py        准备版本 → 从 tag 确定性打包 → 更新 appcast
   sync_catalog.py   从 ElevenLabs 同步模型/音色到 info.json
   verify_api.py     拿真实 Key 实测 API 行为，核实文档说法
   resolve_voices.py 官方 19 个接班音色 ID + 本账号可用性核对（--offline 免联网）

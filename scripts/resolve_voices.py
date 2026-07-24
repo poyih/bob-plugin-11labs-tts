@@ -126,12 +126,13 @@ def api_error(detail):
 
 def own_voices(api_key):
     """账号自己的音色（/v1/voices）。新音色通常不在这里，但先查一遍，
-    因为若用户已把某个接班音色 add 到 My Voices，这里能直接拿到 ID。"""
+    因为若用户已把某个接班音色 add 到 My Voices，这里能直接拿到 ID。
+    返回 (音色列表, 请求是否成功)。"""
     status, data, _ = request("GET", "/voices", api_key)
     if status != 200 or not isinstance(data, dict):
         print(f"  ! 读取 /v1/voices 失败（HTTP {status}）：{api_error(data)}", file=sys.stderr)
-        return []
-    return data.get("voices") or []
+        return [], False
+    return data.get("voices") or [], True
 
 
 def search_library(api_key, term, page_size=30):
@@ -211,22 +212,22 @@ def probe(api_key, voice_id):
         "POST", f"/text-to-speech/{voice_id}?output_format=mp3_22050_32", api_key,
         {"text": PROBE_TEXT, "model_id": "eleven_flash_v2_5"},
     )
-    if 200 <= status < 300:
+    if 200 <= status < 300 and detail is None and size > 0:
         return True, f"200，{size} bytes 音频"
+    if 200 <= status < 300:
+        return False, f"HTTP {status} 返回 JSON 或空响应，并非音频：{api_error(detail)}"
     return False, f"HTTP {status} {api_error(detail)}"
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", default=None,
-                        help="留空则读 ELEVENLABS_API_KEY，再留空则交互式输入（不回显）")
     parser.add_argument("--probe", action="store_true",
                         help="对每个 ID 实打 2 字符确认可用（约 1~2 credits/个）")
     parser.add_argument("--json", action="store_true",
                         help="额外输出可并进 info.json 的 menuValues 片段")
     parser.add_argument("--offline", action="store_true",
                         help="只打印官方表，不联网、不需要 Key")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.offline:
         print(f"官方接班音色表（{len(REPLACEMENTS)} 个，出处见脚本 REPLACEMENTS 注释）")
@@ -240,9 +241,9 @@ def main():
             print(json.dumps([{"title": new, "value": vid}
                               for _, new, vid in REPLACEMENTS],
                              indent=4, ensure_ascii=False))
-        return
+        return 0
 
-    api_key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not api_key:
         try:
             api_key = getpass.getpass("ElevenLabs API Key（输入不回显）: ")
@@ -250,16 +251,18 @@ def main():
             sys.exit("\n已取消")
     api_key = (api_key or "").strip()
     if not api_key:
-        sys.exit("没有拿到 API Key")
+        print("没有拿到 API Key", file=sys.stderr)
+        return 1
 
     print("读取账号音色 …")
-    owned = own_voices(api_key)
+    owned, owned_ok = own_voices(api_key)
     print(f"  账号内 {len(owned)} 个\n")
 
     print(f"核对官方替换表的 {len(REPLACEMENTS)} 个接班音色（只读，不耗额度）")
     print("=" * 78)
 
     diverged = []
+    operational_failures = 0
 
     for old, new, vid in REPLACEMENTS:
         r = crosscheck_one(api_key, new, vid, owned)
@@ -273,6 +276,8 @@ def main():
             diverged.append((old, new, vid))
             for v in r["candidates"]:
                 print(f"{'':32}  搜到 {v['voice_id']}  {v.get('name','?')}  {describe(v)}")
+        elif r["verdict"] == "error":
+            operational_failures += 1
 
     print("=" * 78)
     if diverged:
@@ -292,13 +297,20 @@ def main():
             print(f"  {'✓' if ok else '✗'} {first_token(new):<9} {vid}  {note}")
             usable += 1 if ok else 0
         print(f"  本账号下可用 {usable} / {len(REPLACEMENTS)}")
+        operational_failures += len(REPLACEMENTS) - usable
 
     if args.json:
         print("\ninfo.json menuValues 片段（标题请自行改成中文）：")
         print(json.dumps([{"title": new, "value": vid}
                           for _, new, vid in REPLACEMENTS],
                          indent=4, ensure_ascii=False))
+    if not owned_ok:
+        operational_failures += 1
+    if operational_failures:
+        print(f"\n核验未完整完成：{operational_failures} 个请求或探测失败。", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

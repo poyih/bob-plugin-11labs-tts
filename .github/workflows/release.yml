@@ -1,8 +1,9 @@
 name: Release
 
-# 打 tag 即发布：
-#   git tag v1.0.1 && git push origin v1.0.1
-# 版本号以 tag 为准写回 src/info.json，appcast.json 同步追加一条记录。
+# 先把版本号写进源码、提交并推送，再给同一提交打 tag：
+#   python3 scripts/release.py --prepare-version 1.0.8
+#   git add src/info.json && git commit -m "chore: prepare v1.0.8" && git push
+#   git tag v1.0.8 && git push origin v1.0.8
 
 on:
   push:
@@ -11,57 +12,88 @@ on:
 permissions:
   contents: write
 
+# release job 串行执行；appcast 本身还会按语义版本排序，不依赖排队顺序。
 concurrency:
-  group: release
+  group: release-${{ github.repository }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      # source 永远固定到 tag SHA，测试和发布包都从这里产生。
+      - name: 检出 tag 源码
+        uses: actions/checkout@v4
         with:
-          # 检出默认分支而不是 tag，这样版本提交才能推回去
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: source
+
+      # metadata 只承载 appcast 的更新，不能拿它来构建 tag 的发布包。
+      - name: 检出默认分支元数据
+        uses: actions/checkout@v4
+        with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          path: metadata
 
       - name: 读取版本号
         id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      # 本 job 检出的是默认分支而不是 tag（版本提交要推回默认分支）。
-      # 如果 tag 先于代码推上来，这里拿到的就是旧代码，会用新版本号打出旧内容的包。
-      # 曾经真的发生过，所以卡死在这一步。
-      - name: 校验 tag 已包含在默认分支里
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          BRANCH="${{ github.event.repository.default_branch }}"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then
-            echo "::error::tag $GITHUB_REF_NAME 指向的提交不在 $BRANCH 上。"
-            echo "::error::正确顺序是先 git push，等提交进入 $BRANCH 之后再推 tag。"
-            echo "::error::修复：git push --delete origin $GITHUB_REF_NAME && git push && git push origin $GITHUB_REF_NAME"
+          VERSION="${TAG_NAME#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag 必须形如 v1.0.8，收到 $TAG_NAME"
             exit 1
           fi
-          echo "tag $GITHUB_REF_NAME 已包含在 $BRANCH，继续。"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: 校验 tag 已包含在默认分支里
+        working-directory: source
+        env:
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$BRANCH"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$BRANCH"; then
+            echo "::error::tag $GITHUB_REF_NAME 指向的提交不在 $BRANCH 上。"
+            echo "::error::请先推送版本提交，再给该提交打 tag。"
+            exit 1
+          fi
 
       - name: 跑测试
+        working-directory: source
         run: make test
 
-      - name: 打包并更新 appcast
+      - name: 从 tag 打包并更新默认分支 appcast
+        working-directory: source
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          METADATA_ROOT: ${{ github.workspace }}/metadata
         run: |
           python3 scripts/release.py \
-            --version "${{ steps.meta.outputs.version }}" \
-            --repo "${{ github.repository }}"
+            --version "$VERSION" \
+            --repo "$REPOSITORY" \
+            --metadata-root "$METADATA_ROOT"
 
-      - name: 提交版本变更
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/info.json appcast.json
-          git diff --cached --quiet || git commit -m "chore: release v${{ steps.meta.outputs.version }}"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
-
+      # 先让下载资产真实存在，再把 appcast 暴露给 Bob；若 Release 创建失败，
+      # 用户不会拿到一个暂时指向 404 的更新记录。
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.bobplugin
+          files: source/dist/*.bobplugin
           generate_release_notes: true
+
+      - name: 提交 appcast
+        working-directory: metadata
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.json
+          git diff --cached --quiet || git commit -m "chore: publish appcast v$VERSION"
+          git push origin "HEAD:$BRANCH"

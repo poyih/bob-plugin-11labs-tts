@@ -3,19 +3,21 @@
 
 这两个列表最容易过时，所以做成随手可跑的：
 
-    python3 scripts/sync_catalog.py --api-key sk_xxx            # 只补新增，保留已有中文标题
-    python3 scripts/sync_catalog.py --api-key sk_xxx --replace  # 用 API 返回的英文标题整体重写
-    python3 scripts/sync_catalog.py --api-key sk_xxx --dry-run  # 只看差异，不写文件
+    python3 scripts/sync_catalog.py             # 只补新增，保留已有中文标题
+    python3 scripts/sync_catalog.py --replace   # 用 API 返回的英文标题整体重写
+    python3 scripts/sync_catalog.py --dry-run   # 只看差异，不写文件
 
-只依赖标准库。
+API Key 从 ELEVENLABS_API_KEY 读取；未设置时安全地交互输入。只依赖标准库。
 """
 
 import argparse
+import copy
 import getpass
 import json
 import os
 import pathlib
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -164,7 +166,8 @@ def voice_entries(api_key):
     （Voice Library voices are not available via the API to free tier users）。
     菜单里的 21 个是 Default/premade 音色，对免费档 API 也可用，与音色库音色是两回事；
     Aria/Rachel/Charlotte 是 Legacy 音色（会被路由到音色库音色 → 免费档 402），
-    已在 main.js 发请求前拦截、不进菜单。官方已宣布 Default 音色 2026-12-31 停用。
+    不进菜单；main.js 不预拦截，付费账户仍可交给 API 判定。官方已宣布 Default
+    音色 2026-12-31 停用。
     """
     voices = api_get("/voices", api_key).get("voices", [])
     entries = []
@@ -182,21 +185,19 @@ def voice_entries(api_key):
 def apply_overlay(info):
     """把展示层规则套到菜单上。纯本地操作，不需要 API。
 
-    返回被改动的条目数，便于打印。
+    有任何内容或顺序变化时返回 1，否则返回 0。
     """
-    touched = 0
+    before = copy.deepcopy(info)
 
     model_option = option_by_id(info, "model")
     kept = []
     for entry in model_option.get("menuValues", []):
         if entry["value"] in DEPRECATED_MODELS:
             print(f"- 模型  {entry['value']}  已废弃，移出菜单")
-            touched += 1
             continue
         title = MODEL_TITLES.get(entry["value"])
         if title and entry["title"] != title:
             entry["title"] = title
-            touched += 1
         kept.append(entry)
     kept.sort(key=lambda e: (MODEL_ORDER.index(e["value"]) if e["value"] in MODEL_ORDER else 99))
     model_option["menuValues"] = kept
@@ -220,7 +221,6 @@ def apply_overlay(info):
             title += RETIRING_SUFFIX
         if title != entry["title"]:
             entry["title"] = title
-            touched += 1
         body.append(entry)
     # 保留 menuValues 既有顺序（v1.0.3 起按女前男后、美式前英式后手工排过）。
     # 不再按退役/标题重排：21 个 Default 音色全部在退役名单里，旧 sort 会退化成
@@ -230,7 +230,7 @@ def apply_overlay(info):
     successors = sum(1 for e in body if e["value"] in SUCCESSOR_TITLES)
     print(f"\n展示层：模型 {len(kept)} 个，音色 {len(body)} 个"
           f"（接班音色 {successors} 个，2026-12-31 退役 {retiring_count} 个）")
-    return touched
+    return int(info != before)
 
 
 def merge(option, fresh, replace, keep_tail_value=None):
@@ -253,13 +253,59 @@ def merge(option, fresh, replace, keep_tail_value=None):
     return merged, added, stale
 
 
+def repair_defaults(info):
+    """确保 model/voice 默认值仍存在；合法的 __custom__ 也必须保留。"""
+    changed = 0
+    for identifier in ("model", "voice"):
+        option = option_by_id(info, identifier)
+        values = [entry["value"] for entry in option.get("menuValues", [])]
+        current = option.get("defaultValue")
+        if not values or current in values:
+            continue
+        replacement = next(
+            (value for value in values if value != CUSTOM_VOICE),
+            values[0],
+        )
+        print(f"\n! {identifier} 的默认值 {current} 已不在菜单里，改为 {replacement}")
+        option["defaultValue"] = replacement
+        changed += 1
+    return changed
+
+
+def write_json_atomic(path, value):
+    """在同目录写临时文件后原子替换，避免中断留下半个 JSON。"""
+    path = pathlib.Path(path)
+    temp_name = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fp:
+            temp_name = fp.name
+            json.dump(value, fp, indent=4, ensure_ascii=False)
+            fp.write("\n")
+            fp.flush()
+            os.fsync(fp.fileno())
+        if path.exists():
+            os.chmod(temp_name, path.stat().st_mode & 0o777)
+        else:
+            os.chmod(temp_name, 0o644)
+        os.replace(temp_name, path)
+    except BaseException:
+        if temp_name:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--api-key",
-        default=None,
-        help="留空则读环境变量 ELEVENLABS_API_KEY，再留空则交互式输入（不回显、不进 shell 历史）",
-    )
     parser.add_argument("--replace", action="store_true", help="整体重写而不是只补新增")
     parser.add_argument("--dry-run", action="store_true", help="只打印差异")
     parser.add_argument("--models-only", action="store_true")
@@ -274,14 +320,14 @@ def main():
     args = parser.parse_args()
 
     if not args.overlay_only:
-        api_key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
+        api_key = os.environ.get("ELEVENLABS_API_KEY")
         if not api_key:
             try:
                 api_key = getpass.getpass("ElevenLabs API Key（输入不回显）: ")
             except (EOFError, KeyboardInterrupt):
                 sys.exit("\n已取消")
-        args.api_key = (api_key or "").strip()
-        if not args.api_key:
+        api_key = (api_key or "").strip()
+        if not api_key:
             sys.exit("没有拿到 API Key")
 
     with INFO.open(encoding="utf-8") as fp:
@@ -299,7 +345,7 @@ def main():
 
     if do_models:
         option = option_by_id(info, "model")
-        merged, added, stale = merge(option, model_entries(args.api_key), args.replace)
+        merged, added, stale = merge(option, model_entries(api_key), args.replace)
         for entry in added:
             print(f"+ 模型  {entry['value']}  {entry['title']}")
         for entry in stale:
@@ -310,7 +356,7 @@ def main():
 
     if do_voices:
         option = option_by_id(info, "voice")
-        fresh, categories = voice_entries(args.api_key)
+        fresh, categories = voice_entries(api_key)
         merged, added, stale = merge(
             option, fresh, args.replace, keep_tail_value=CUSTOM_VOICE
         )
@@ -333,15 +379,10 @@ def main():
         changed = True
 
     # --replace 会整体换掉菜单，默认值有可能被换没了。Bob 对不在菜单里的值不会
-    # 报错，只会照旧发出去，界面却显示成第一项 —— 这正是之前 402 排查被误导的
-    # 原因，所以这里必须兜住。
-    for identifier in ("model", "voice"):
-        option = option_by_id(info, identifier)
-        values = [e["value"] for e in option.get("menuValues", []) if e["value"] != CUSTOM_VOICE]
-        if values and option.get("defaultValue") not in values:
-            print(f"\n! {identifier} 的默认值 {option.get('defaultValue')} 已不在菜单里，改为 {values[0]}")
-            option["defaultValue"] = values[0]
-            changed = True
+    # 报错，只会照旧发出去，界面却显示成第一项，因此必须兜住。__custom__ 是
+    # 合法菜单值，不能把用户主动选择的自定义音色重置掉。
+    if repair_defaults(info):
+        changed = True
 
     if not changed:
         print("没有变化。")
@@ -351,9 +392,7 @@ def main():
         print("\n--dry-run，未写入 src/info.json")
         return
 
-    with INFO.open("w", encoding="utf-8") as fp:
-        json.dump(info, fp, indent=4, ensure_ascii=False)
-        fp.write("\n")
+    write_json_atomic(INFO, info)
     print("\n已更新 src/info.json")
 
 

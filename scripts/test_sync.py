@@ -8,6 +8,8 @@ apply_overlay 是展示层规则的唯一入口，过去靠人眼盯。这里把
 - 退役音色追加「（2026-12-31 停用）」后缀，长期可用音色不加
 - __custom__ 始终排到最末、且不加退役后缀
 - 音色 menuValues 的既有顺序被保留（v1.0.3 起手工排过，不能再被 sort 冲掉）
+- 只有顺序变化时也会报告已修改，确保主程序真正写盘
+- 合法的 __custom__ 默认值不会被误重置
 
 直接 import scripts/sync_catalog.py，把它当库用。
 """
@@ -130,8 +132,57 @@ def test_overlay_idempotent():
                  ["hpp4J3VqNfWAUOO0d1Us", "zzUserDesignedVoice0001", CUSTOM])
     sync.apply_overlay(info)
     snap = copy.deepcopy(info)
-    sync.apply_overlay(info)
+    changed = sync.apply_overlay(info)
     check(info == snap, "重复套规则幂等（不叠加后缀、不改顺序）")
+    check(changed == 0, "幂等调用返回 0（没有变化）")
+
+
+# 7. 仅模型顺序变化也必须报告修改 -----------------------------------------
+def test_order_only_reports_change():
+    info = _info(
+        ["eleven_v3", "eleven_flash_v2_5"],
+        ["zzUserDesignedVoice0001", CUSTOM],
+    )
+    for entry in info["options"][0]["menuValues"]:
+        entry["title"] = sync.MODEL_TITLES[entry["value"]]
+    changed = sync.apply_overlay(info)
+    check(changed == 1, "只有模型重排时 apply_overlay 也返回非零")
+
+
+# 8. 仅把 __custom__ 移到末尾也必须报告修改 -------------------------------
+def test_custom_move_only_reports_change():
+    info = _info(
+        ["eleven_flash_v2_5"],
+        [CUSTOM, "zzUserDesignedVoice0001"],
+    )
+    info["options"][0]["menuValues"][0]["title"] = sync.MODEL_TITLES["eleven_flash_v2_5"]
+    changed = sync.apply_overlay(info)
+    check(changed == 1, "只有 __custom__ 位置变化时也返回非零")
+
+
+# 9. 默认值修复保留合法 __custom__ -----------------------------------------
+def test_custom_default_preserved():
+    info = _info(
+        ["eleven_flash_v2_5"],
+        ["zzUserDesignedVoice0001", CUSTOM],
+        voice_default=CUSTOM,
+    )
+    changed = sync.repair_defaults(info)
+    check(changed == 0, "合法的 __custom__ 默认值不被重置")
+    check(info["options"][1]["defaultValue"] == CUSTOM, "__custom__ 默认值保持不变")
+
+
+# 10. 失效默认值修到第一个非自定义项 ---------------------------------------
+def test_missing_default_repaired():
+    info = _info(
+        ["eleven_flash_v2_5"],
+        [CUSTOM, "zzUserDesignedVoice0001"],
+        voice_default="goneVoice",
+    )
+    changed = sync.repair_defaults(info)
+    check(changed == 1, "失效默认值会被报告为修改")
+    check(info["options"][1]["defaultValue"] == "zzUserDesignedVoice0001",
+          "失效默认值优先修到第一个非自定义音色")
 
 
 def run():
@@ -142,6 +193,10 @@ def run():
         test_custom_last_and_unmarked,
         test_voice_order_preserved,
         test_overlay_idempotent,
+        test_order_only_reports_change,
+        test_custom_move_only_reports_change,
+        test_custom_default_preserved,
+        test_missing_default_repaired,
     ]
     for t in tests:
         print(f"── {t.__name__}")
