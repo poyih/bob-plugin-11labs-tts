@@ -13,10 +13,9 @@ var API_BASE = "https://api.elevenlabs.io/v1";
 // 实打过，确认在 0.4s 内回 400 + max_character_limit_exceeded。
 var MODELS = {
     eleven_v3: { charLimit: 5000 },
-    // v3 的低延迟版，2026-08-19 GA，2026-09-25 收录。2026-09-25 用 payg Key 实打：2 字符合成
-    // 200。上限仍按 v3 同档取 5000——当日 Key 缺 models_read 权限，GET /v1/models 回 401，
-    // 元数据没拉到（HANDOFF P1#6 待补）。若真实上限更低，API 会回 400
-    // max_character_limit_exceeded，插件已能正确报「超出上限」，不会误播。
+    // v3 的低延迟版，2026-08-19 GA，2026-09-25 收录。2026-09-25 用 payg Key 从 /v1/models 实测：
+    // max_characters_request_free_user = subscribed_user = 5000，与 v3 同档；2 字符合成实打 200。
+    // 另：model_rates.character_cost_multiplier=0.5，按字计费是 v3 的一半（HANDOFF P1#6）。
     eleven_v3_conversational: { charLimit: 5000 },
     eleven_multilingual_v2: { charLimit: 10000 },
     eleven_flash_v2_5: { charLimit: 40000 },
@@ -43,10 +42,8 @@ var FALLBACK_MODEL = { charLimit: 5000 };
 //          language_code，下发收益未证实且可能强制语种、误读跨语言文本，保留历史保守行为。
 var MODEL_LANGUAGES = {
     eleven_v3: null,
-    // 官方文档原文「Eleven v3 and Eleven v3 Conversational support 70+ languages」；pipecat 的
-    // ElevenLabs 服务也让它与 v3 共用同一语言集。2026-09-25 实打：+ zh → 200，+ af（flash_v2_5
-    // 必 400 的探针语言）→ 200，与 v3 一致。完整 languages 列表待 /v1/models（当日 Key 缺
-    // models_read，HANDOFF P1#6 待补）——若日后某语言回 400 unsupported_language，收窄成显式列表。
+    // 2026-09-25 从 /v1/models 实测：languages 74 种，与 v3 逐一相同（不多不少）；+ zh、+ af
+    // （flash_v2_5 必 400 的探针语言）实打均 200。所以与 v3 一样置 null（HANDOFF P1#6）。
     eleven_v3_conversational: null,
     eleven_multilingual_v2: [],
     eleven_flash_v2_5: [
@@ -78,10 +75,11 @@ function modelAcceptsLanguage(modelId, code) {
 
 // 各模型对 voice_settings 字段的支持能力。
 // 出处：GET /v1/models 每个模型的 can_use_style / can_use_speaker_boost 布尔标志
-// （2026-07-23 真机拉取）。实测这两项仅 multilingual_v2 为 true，flash_v2_5 / flash_v2 /
-// v3 均为 false——传了会被服务端忽略。这里做运行时门控，让请求体与模型能力一致、日志更
-// 干净，也对「个别模型可能改为 400 而非忽略」留一层保险；即便某标志日后变化，门控最坏
-// 是漏发一个本可生效的字段（音质微损），不会造成报错。
+// （2026-07-23 真机拉取；v3_conversational 于 2026-09-25 拉取）。实测 can_use_style 仅
+// multilingual_v2 为 true；can_use_speaker_boost 在 multilingual_v2 和 v3_conversational 为 true；
+// flash_v2_5 / flash_v2 / v3 两项均为 false——传了会被服务端忽略。这里做运行时门控，让请求体
+// 与模型能力一致、日志更干净，也对「个别模型可能改为 400 而非忽略」留一层保险；即便某标志
+// 日后变化，门控最坏是漏发一个本可生效的字段（音质微损），不会造成报错。
 //
 // 注意：/v1/models 只暴露 can_use_style 和 can_use_speaker_boost 两个字段，没有
 // speed / similarity_boost / stability 的 per-model 标志，所以这三项一律下发、不门控。
@@ -90,10 +88,9 @@ var MODEL_SETTINGS = {
     eleven_flash_v2_5: { style: false, use_speaker_boost: false },
     eleven_flash_v2: { style: false, use_speaker_boost: false },
     eleven_v3: { style: false, use_speaker_boost: false },
-    // 按 v3 同样处理。2026-09-25 实打：下发 style / use_speaker_boost 也是 200（与 v3 一样被
-    // 静默接受，门控错了最坏是漏发一个本可生效的字段，不会报错）；can_use_* 两个标志待
-    // /v1/models（当日 Key 缺 models_read，HANDOFF P1#6 待补）。
-    eleven_v3_conversational: { style: false, use_speaker_boost: false },
+    // 2026-09-25 从 /v1/models 实测：can_use_style=false、can_use_speaker_boost=true——与 v3 不同，
+    // speaker_boost 在它身上是生效的，所以要下发；style 仍不发（HANDOFF P1#6）。
+    eleven_v3_conversational: { style: false, use_speaker_boost: true },
     // turbo 已 deprecated，能力与同名 flash 一致
     eleven_turbo_v2_5: { style: false, use_speaker_boost: false },
     eleven_turbo_v2: { style: false, use_speaker_boost: false }

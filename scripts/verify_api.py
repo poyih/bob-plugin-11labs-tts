@@ -226,15 +226,16 @@ def probes_status(api_key, voice):
 
 
 def probes_models(api_key, voice):
-    """菜单里的 5 个模型逐个实打，含 2026-09 新增、尚未真机验过的 v3_conversational。"""
+    """菜单里的 5 个模型逐个实打，含 2026-09 新增的 v3_conversational（2026-09-25 已真机验过）。"""
     for model in ("eleven_flash_v2_5", "eleven_flash_v2",
                   "eleven_multilingual_v2", "eleven_v3",
                   "eleven_v3_conversational"):
         s, d, n = tts(api_key, voice, model_id=model)
         yield Result("models", model, s, d, n)
 
-    # v3_conversational 收录时拿不到 /v1/models，config.js 里它的上限 / 能力 / 语言集都是按 v3
-    # 同档假设的。把元数据原样打印出来，并和 v3 比语言集，方便对照 config.js 三张表改正。
+    # v3_conversational 的元数据 2026-09-25 已核对进 config.js（5000 字、can_use_speaker_boost=true、
+    # 语言集与 v3 相同）。这里仍把元数据原样打印并和 v3 比语言集，便于日后复核 config.js 三张表。
+    # 注意 GET /v1/models 需要 Key 带 models_read 权限，否则 401 missing_permissions。
     name = "v3_conversational /v1/models 元数据"
     status, data, _ = request("GET", "/models", api_key)
     by_id = {m.get("model_id"): m for m in data} if isinstance(data, list) else {}
@@ -292,7 +293,7 @@ def probes_settings(api_key, voice):
                   voice_settings={"speed": 1.1, "style": 0.3})
     yield Result("settings", "v3 + speed/style", s, d, n)
 
-    # v3_conversational 是否同样静默接受 style / speaker_boost（config.js 按 v3 同样门控）
+    # v3_conversational：/v1/models 说 can_use_speaker_boost=true、can_use_style=false，config.js 据此门控
     s, d, n = tts(api_key, voice, model_id="eleven_v3_conversational",
                   voice_settings={"speed": 1.1, "style": 0.3, "use_speaker_boost": True})
     yield Result("settings", "v3_conversational + speed/style/speaker_boost", s, d, n)
@@ -311,7 +312,7 @@ def probes_language(api_key, voice):
         ("multilingual_v2 + zh（文档称不支持）", "eleven_multilingual_v2", "zh"),
         ("v3 + zh", "eleven_v3", "zh"),
         ("v3_conversational + zh", "eleven_v3_conversational", "zh"),
-        ("v3_conversational + af（按 v3 全语言假设）", "eleven_v3_conversational", "af"),
+        ("v3_conversational + af（/v1/models 语言集与 v3 相同）", "eleven_v3_conversational", "af"),
         ("flash_v2 仅英语 + zh", "eleven_flash_v2", "zh"),
     ]
     for name, model, code in cases:

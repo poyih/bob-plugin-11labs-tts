@@ -330,8 +330,8 @@ function resolveVoice() {
 }
 
 // 只把用户显式覆盖过的项发给 API，其余留空则沿用音色在 ElevenLabs 上保存的设置。
-// 再按模型能力门控：style / use_speaker_boost 只有 multilingual_v2 支持，其余模型
-// （含 v3）会忽略，这里直接不发（详见 config.js MODEL_SETTINGS）。
+// 再按模型能力门控：style 只有 multilingual_v2 支持，use_speaker_boost 只有 multilingual_v2
+// 和 v3_conversational 支持，其余模型（含 v3）会忽略，这里直接不发（详见 config.js MODEL_SETTINGS）。
 function buildVoiceSettings(modelId) {
     var settings = {};
     var dropped = [];

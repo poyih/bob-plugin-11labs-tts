@@ -238,7 +238,7 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "param" && r.error.message.indexOf("10000") > 0,
         "超过 multilingual_v2 的 10000 字上限时报 param");
 
-    // 5b. v3 Conversational 必须在 MODELS 表里登记，不能靠 FALLBACK 兜底（数值相同只是巧合）
+    // 5b. v3 Conversational 必须在 MODELS 表里登记，不能靠 FALLBACK 兜底（/v1/models 实测 5000，与 FALLBACK 相同只是巧合）
     ok(configModule.MODELS.eleven_v3_conversational &&
         configModule.MODELS.eleven_v3_conversational.charLimit === 5000,
         "v3 Conversational 在 MODELS 表里登记了 5000 字上限");
@@ -558,16 +558,17 @@ var EN = { text: "hello world", lang: "en" };
         "v3 仍下发 stability / speed / similarity_boost");
     ok(loggedLine("voice_settings 丢弃（eleven_v3 不支持）"), "丢弃的字段写进日志");
 
-    // v3 Conversational 按 v3 同样门控
+    // v3 Conversational：/v1/models 实测 can_use_style=false、can_use_speaker_boost=true（2026-09-25），
+    // 与 v3 不同——style 丢弃，use_speaker_boost 要下发
     withOptions({ model: "eleven_v3_conversational", stability: "0.5", style: "0.3", speakerBoost: "true" });
     nextResponse = audioResponse(200);
     logs = [];
     await speak(EN);
     var vsConv = lastRequest.body.voice_settings;
-    ok(vsConv && vsConv.style === undefined && vsConv.use_speaker_boost === undefined && vsConv.stability === 0.5,
-        "v3 Conversational 不下发 style / use_speaker_boost，仍下发 stability");
-    ok(loggedLine("voice_settings 丢弃（eleven_v3_conversational 不支持）"),
-        "v3 Conversational 丢弃的字段写进日志");
+    ok(vsConv && vsConv.style === undefined && vsConv.use_speaker_boost === true && vsConv.stability === 0.5,
+        "v3 Conversational 不下发 style，但下发 use_speaker_boost=true 与 stability");
+    ok(loggedLine("voice_settings 丢弃（eleven_v3_conversational 不支持）：style"),
+        "v3 Conversational 只把 style 写进丢弃日志");
 
     // flash_v2_5 同样门控 style / speaker_boost
     withOptions({ model: "eleven_flash_v2_5", style: "0.3", speakerBoost: "false" });
