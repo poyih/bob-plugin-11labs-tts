@@ -39,11 +39,15 @@
                     "value": "eleven_v3"
                 },
                 {
+                    "title": "v3 Conversational — v3 的低延迟版、表现力强（70+ 语言）",
+                    "value": "eleven_v3_conversational"
+                },
+                {
                     "title": "Flash v2 — 仅英语，超低延迟",
                     "value": "eleven_flash_v2"
                 }
             ],
-            "desc": "Flash 系列延迟约 75ms，适合即时朗读；Multilingual v2 和 v3 音质更好但更慢。"
+            "desc": "Flash 系列延迟约 75ms，适合即时朗读；Multilingual v2 和 v3 音质更好但更慢；v3 Conversational 是 v3 的低延迟版，兼顾表现力与速度。"
         },
         {
             "identifier": "voice",
@@ -243,7 +247,7 @@
                     "value": "0.6"
                 }
             ],
-            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_style=false），本插件在这些模型上不会发送此参数。"
+            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_style=false；v3 Conversational 按 v3 同样处理），本插件在这些模型上不会发送此参数。"
         },
         {
             "identifier": "speed",
@@ -297,7 +301,7 @@
                     "value": "false"
                 }
             ],
-            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_speaker_boost=false），本插件在这些模型上不会发送此参数。"
+            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_speaker_boost=false；v3 Conversational 按 v3 同样处理），本插件在这些模型上不会发送此参数。"
         }
     ]
 }

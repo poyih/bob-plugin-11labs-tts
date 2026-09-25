@@ -10,13 +10,17 @@ apply_overlay 是展示层规则的唯一入口，过去靠人眼盯。这里把
 - 音色 menuValues 的既有顺序被保留（v1.0.3 起手工排过，不能再被 sort 冲掉）
 - 只有顺序变化时也会报告已修改，确保主程序真正写盘
 - 合法的 __custom__ 默认值不会被误重置
+- MODEL_TITLES 与 MODEL_ORDER 覆盖同一批模型，且真实 src/info.json 已满足展示层规则
+- 菜单里的每个模型在 config.js 的三张能力表里都登记了（新增模型时最容易漏）
 
 直接 import scripts/sync_catalog.py，把它当库用。
 """
 
 import copy
 import importlib.util
+import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location(
@@ -77,7 +81,8 @@ def test_deprecated_models_filtered():
 # 2. 模型按 MODEL_ORDER 排序 ----------------------------------------------
 def test_model_order():
     info = _info(
-        ["eleven_v3", "eleven_flash_v2", "eleven_flash_v2_5", "eleven_multilingual_v2"],
+        ["eleven_v3", "eleven_flash_v2", "eleven_v3_conversational",
+         "eleven_flash_v2_5", "eleven_multilingual_v2"],
         ["hpp4J3VqNfWAUOO0d1Us", CUSTOM],
     )
     sync.apply_overlay(info)
@@ -185,6 +190,32 @@ def test_missing_default_repaired():
           "失效默认值优先修到第一个非自定义音色")
 
 
+# 11. 标题表 / 顺序表 / 真实 info.json 三者一致 ---------------------------
+def test_real_info_consistent():
+    check(set(sync.MODEL_TITLES) == set(sync.MODEL_ORDER),
+          "MODEL_TITLES 与 MODEL_ORDER 覆盖同一批模型")
+    with sync.INFO.open(encoding="utf-8") as fp:
+        info = json.load(fp)
+    snap = copy.deepcopy(info)
+    changed = sync.apply_overlay(info)
+    check(changed == 0 and info == snap,
+          "真实 src/info.json 已满足展示层规则（顺序、标题、__custom__ 位置）")
+    model_ids = [e["value"] for e in sync.option_by_id(info, "model")["menuValues"]]
+    check(model_ids == sync.MODEL_ORDER, "真实 info.json 的模型菜单与 MODEL_ORDER 完全一致")
+
+
+# 12. 菜单里的模型在 config.js 三张能力表里都有登记 ------------------------
+def test_config_tables_cover_menu():
+    src = (ROOT / "src" / "config.js").read_text(encoding="utf-8")
+    for table in ("MODELS", "MODEL_LANGUAGES", "MODEL_SETTINGS"):
+        block = re.search(r"var %s = \{(.*?)\n\};" % table, src, re.S)
+        keys = set(re.findall(r"^\s*(eleven_[a-z0-9_]+)\s*:", block.group(1), re.M)) if block else set()
+        missing = [mid for mid in sync.MODEL_ORDER if mid not in keys]
+        check(block is not None and not missing,
+              f"config.js {table} 登记了菜单里的全部模型"
+              + (f"（缺 {', '.join(missing)}）" if missing else ""))
+
+
 def run():
     tests = [
         test_deprecated_models_filtered,
@@ -197,6 +228,8 @@ def run():
         test_custom_move_only_reports_change,
         test_custom_default_preserved,
         test_missing_default_repaired,
+        test_real_info_consistent,
+        test_config_tables_cover_menu,
     ]
     for t in tests:
         print(f"── {t.__name__}")

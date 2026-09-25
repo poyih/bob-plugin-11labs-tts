@@ -11,7 +11,7 @@ language_code 在 multilingual_v2 上到底是被忽略还是报错。文档答�
     python3 scripts/verify_api.py --dry-run       # 只列出会发什么请求，不联网
 
 成功的合成用 2 字符文本，约 1~2 credits 一次；失败的请求不计费。
-全量跑一次大约消耗 30~40 credits（免费档每月 10000）。
+全量跑一次大约消耗 40~50 credits（免费档每月 10000）。
 
 只依赖标准库。全程不打印 API Key。
 """
@@ -226,11 +226,36 @@ def probes_status(api_key, voice):
 
 
 def probes_models(api_key, voice):
-    """4 个模型逐个实打，含从未在真机跑过的 multilingual_v2。"""
+    """菜单里的 5 个模型逐个实打，含 2026-09 新增、尚未真机验过的 v3_conversational。"""
     for model in ("eleven_flash_v2_5", "eleven_flash_v2",
-                  "eleven_multilingual_v2", "eleven_v3"):
+                  "eleven_multilingual_v2", "eleven_v3",
+                  "eleven_v3_conversational"):
         s, d, n = tts(api_key, voice, model_id=model)
         yield Result("models", model, s, d, n)
+
+    # v3_conversational 收录时拿不到 /v1/models，config.js 里它的上限 / 能力 / 语言集都是按 v3
+    # 同档假设的。把元数据原样打印出来，并和 v3 比语言集，方便对照 config.js 三张表改正。
+    name = "v3_conversational /v1/models 元数据"
+    status, data, _ = request("GET", "/models", api_key)
+    by_id = {m.get("model_id"): m for m in data} if isinstance(data, list) else {}
+    entry = by_id.get("eleven_v3_conversational")
+    if not entry:
+        msg = "列表里没有 eleven_v3_conversational" if status == 200 else ""
+        yield Result("models", name, status,
+                     {"_non_audio": msg} if status == 200 else data, msg)
+        return
+    conv_langs = {l.get("language_id") for l in (entry.get("languages") or [])}
+    v3_langs = {l.get("language_id")
+                for l in ((by_id.get("eleven_v3") or {}).get("languages") or [])}
+    missing = sorted(v3_langs - conv_langs)
+    note = (f"max_chars free/sub={entry.get('max_characters_request_free_user')}/"
+            f"{entry.get('max_characters_request_subscribed_user')} "
+            f"can_use_style={entry.get('can_use_style')} "
+            f"can_use_speaker_boost={entry.get('can_use_speaker_boost')} "
+            f"can_do_text_to_speech={entry.get('can_do_text_to_speech')} "
+            f"languages={len(conv_langs)} 比 v3 少="
+            + (",".join(missing) if missing else "无（MODEL_LANGUAGES 可保持 null）"))
+    yield Result("models", name, status, None, note)
 
 
 def probes_formats(api_key, voice):
@@ -267,6 +292,11 @@ def probes_settings(api_key, voice):
                   voice_settings={"speed": 1.1, "style": 0.3})
     yield Result("settings", "v3 + speed/style", s, d, n)
 
+    # v3_conversational 是否同样静默接受 style / speaker_boost（config.js 按 v3 同样门控）
+    s, d, n = tts(api_key, voice, model_id="eleven_v3_conversational",
+                  voice_settings={"speed": 1.1, "style": 0.3, "use_speaker_boost": True})
+    yield Result("settings", "v3_conversational + speed/style/speaker_boost", s, d, n)
+
 
 def probes_language(api_key, voice):
     """language_code 的真实行为：被忽略还是报错。"""
@@ -280,6 +310,8 @@ def probes_language(api_key, voice):
         ("flash_v2_5 + 乱码 zzz", "eleven_flash_v2_5", "zzz"),
         ("multilingual_v2 + zh（文档称不支持）", "eleven_multilingual_v2", "zh"),
         ("v3 + zh", "eleven_v3", "zh"),
+        ("v3_conversational + zh", "eleven_v3_conversational", "zh"),
+        ("v3_conversational + af（按 v3 全语言假设）", "eleven_v3_conversational", "af"),
         ("flash_v2 仅英语 + zh", "eleven_flash_v2", "zh"),
     ]
     for name, model, code in cases:

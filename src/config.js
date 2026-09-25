@@ -13,6 +13,10 @@ var API_BASE = "https://api.elevenlabs.io/v1";
 // 实打过，确认在 0.4s 内回 400 + max_character_limit_exceeded。
 var MODELS = {
     eleven_v3: { charLimit: 5000 },
+    // v3 的低延迟版，2026-08-19 GA，2026-09-25 收录。收录时拿不到 /v1/models，上限按 v3 同档
+    // 假设，待用真实 Key 复核（HANDOFF P1#6）。若真实上限更低，API 会回 400
+    // max_character_limit_exceeded，插件已能正确报「超出上限」，不会误播。
+    eleven_v3_conversational: { charLimit: 5000 },
     eleven_multilingual_v2: { charLimit: 10000 },
     eleven_flash_v2_5: { charLimit: 40000 },
     eleven_flash_v2: { charLimit: 30000, englishOnly: true },
@@ -38,6 +42,10 @@ var FALLBACK_MODEL = { charLimit: 5000 };
 //          language_code，下发收益未证实且可能强制语种、误读跨语言文本，保留历史保守行为。
 var MODEL_LANGUAGES = {
     eleven_v3: null,
+    // 官方文档原文「Eleven v3 and Eleven v3 Conversational support 70+ languages」；pipecat 的
+    // ElevenLabs 服务也让它与 v3 共用同一语言集。未逐语言实打——若某语言回 400
+    // unsupported_language，按 HANDOFF P1#6 收窄成显式列表。
+    eleven_v3_conversational: null,
     eleven_multilingual_v2: [],
     eleven_flash_v2_5: [
         "ar", "bg", "cs", "da", "de", "el", "en", "es", "fi", "fil", "fr", "hi",
@@ -80,6 +88,8 @@ var MODEL_SETTINGS = {
     eleven_flash_v2_5: { style: false, use_speaker_boost: false },
     eleven_flash_v2: { style: false, use_speaker_boost: false },
     eleven_v3: { style: false, use_speaker_boost: false },
+    // 按 v3 同样处理（未经 /v1/models 复核）：门控错了最坏是漏发一个本可生效的字段，不会报错
+    eleven_v3_conversational: { style: false, use_speaker_boost: false },
     // turbo 已 deprecated，能力与同名 flash 一致
     eleven_turbo_v2_5: { style: false, use_speaker_boost: false },
     eleven_turbo_v2: { style: false, use_speaker_boost: false }
@@ -100,7 +110,7 @@ function modelAcceptsSetting(modelId, field) {
 // tier 表示「最低要哪一档模型才原生支持」：
 //   v2    - multilingual_v2 / flash_v2_5 / v3 都支持
 //   flash - flash_v2_5 及以上
-//   v3    - 仅 v3
+//   v3    - v3 / v3 Conversational
 // tier 目前只用于文档说明，运行时不会因此拒绝合成（模型不支持时只是口音不准，不该报错）。
 var LANGUAGES = [
     ["zh-Hans", "zh", "v2"],

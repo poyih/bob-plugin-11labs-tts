@@ -17,8 +17,8 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.7，�
 ## 现成的工具
 
 ```bash
-make test                              # 插件 67 项检查 + sync/tools 各 10 组测试，全程离线
-python3 scripts/verify_api.py          # 拿真实 Key 打 ElevenLabs，6 组探针，约 30~40 credits
+make test                              # 插件 72 项检查 + sync 12 组 / tools 10 组测试，全程离线
+python3 scripts/verify_api.py          # 拿真实 Key 打 ElevenLabs，6 组探针，约 40~50 credits
 python3 scripts/verify_api.py --dry-run
 python3 scripts/resolve_voices.py --offline   # 官方 19 个接班音色 ID 对照表（不联网、不要 Key）
 make install                           # 打包并让 Bob 安装
@@ -84,12 +84,14 @@ grep '11labs-tts' ~/Library/Containers/com.hezongyidev.Bob/Data/Documents/MMKitL
 | 3 | 192kbps 的确切 HTTP/status | **403 `output_format_not_allowed`**（`code=subscription_required`），「only available on the Creator tier and above」。payg 也被拒 | 菜单项保留（Creator+ 用户可用），`toServiceError` 已正确分派（见 P0#5） |
 | 4 | `eleven_multilingual_v2` 是否可用 | **可用**，实测 200 | 无需改 |
 | 5 | 6 个猜的 status 哪些真出现 | 见下方存档表。`voice_not_found`/`invalid_api_key` 出现；`voice_does_not_exist` 未出现（实际是 `voice_not_found`）；另冒出 `model_not_found`/`unsupported_language`/`output_format_not_allowed`/`invalid_output_format`/`invalid_voice_settings` 等 | `toServiceError` 已据实测重写 |
+| 6 | **（2026-09-25 新增，未实测）** `eleven_v3_conversational` 的 `/v1/models` 元数据：字符上限、`can_use_style` / `can_use_speaker_boost`、`languages` | 收录时所在环境无法访问 api.elevenlabs.io，也没有 Key。`config.js` 三张表**按 v3 同档假设**：5000 字、不发 style / speaker_boost、语言集与 v3 相同（官方文档「v3 and v3 Conversational support 70+ languages」+ pipecat 同样处理）。假设错了的后果都可控：上限偏高 → API 回 400 `max_character_limit_exceeded`，插件已正确报错；门控偏严 → 漏发一个字段；语言集偏宽 → 该语言 400 `unsupported_language` | 跑 `verify_api.py --only models --only settings --only language`：models 组会把它的元数据和「比 v3 少的语言」直接打印出来，按结果改 `config.js` 的 `MODELS` / `MODEL_SETTINGS` / `MODEL_LANGUAGES`，改完把本行标成已验 |
 
 ### 语言门控（P1#1 的真正结论）
 
 - 原以为「模型不支持 language_code 就忽略」，**实测证伪**：不支持时回 **400 `unsupported_language`**。
 - 所以模型门控**不能删**，反而要细化到「按模型 × 语言」：`config.js` 新增 `MODEL_LANGUAGES`（取自 `/v1/models` 每模型 `languages` 字段，逐模型实打复核），`main.js` 用 `config.modelAcceptsLanguage(modelId, code)` 判断，**只在模型支持时下发**，否则留空让模型自行识别。
 - v3 = 全支持（74 种）；flash_v2_5 / turbo_v2_5 = 32 种；flash_v2 / turbo_v2 = 仅 `en`；multilingual_v2 = **一律不下发**（自动识别模型，保留历史保守行为）；未知模型 = 一律不下发（最保守）。
+- v3_conversational = 按 v3 全支持处理（**未实测**，见 P1#6）。
 - 实测覆盖：flash_v2_5 + zh → 200（下发）；flash_v2_5 + af → 不下发 → 200（避免 400）；flash_v2 + 中文不带 code → 200（怪音）；v3 + af → 200（下发）。
 
 ### 实测到的 detail.status 存档（2026-07-23，payg）
@@ -245,5 +247,6 @@ python3 scripts/verify_api.py --only status --voice-id <新音色的ID>
 - 超限是 **400 + `max_character_limit_exceeded`**（新码 `text_too_long`）
 - Aria / Rachel / Charlotte 是 **Legacy 音色**，会被自动路由到音色库音色；payg 实测可用，免费档可能 402。插件不预拦截，由 API 按账户判定
 - 免费档的判据是**音色来源是不是音色库**，与「在不在你账号里」无关
-- `info.json` 模型菜单 4 项（flash_v2_5 / multilingual_v2 / v3 / flash_v2）= payg 账号 live `/v1/models` 里**非弃用 TTS 模型的全集**，一一对应；弃用的 turbo_v2_5 / turbo_v2 正确不在菜单，但留在 `config.js` 的 `MODELS` 里给老配置兜底正确上限（否则掉进 `FALLBACK_MODEL` 的 5000）。菜单语言数标注（32 / 29 / 70+ / 仅英语）与官方 overview 一致。overview 提到的 multilingual_v1 在 live API 已不返回，插件正确未收录。**结论：模型菜单无需改**
+- `info.json` 模型菜单 4 项（flash_v2_5 / multilingual_v2 / v3 / flash_v2）= payg 账号 live `/v1/models` 里**非弃用 TTS 模型的全集**，一一对应；弃用的 turbo_v2_5 / turbo_v2 正确不在菜单，但留在 `config.js` 的 `MODELS` 里给老配置兜底正确上限（否则掉进 `FALLBACK_MODEL` 的 5000）。菜单语言数标注（32 / 29 / 70+ / 仅英语）与官方 overview 一致。overview 提到的 multilingual_v1 在 live API 已不返回，插件正确未收录。**结论（2026-07-23）：模型菜单无需改**
+  - **2026-09-25 更新**：ElevenLabs 于 2026-08-19 让 `eleven_v3_conversational`（v3 的低延迟版）GA，菜单加到 5 项。依据：官方 Python / JS SDK 2.69.0 的模型枚举、官方 GA 公告，以及 Home Assistant 用户 2026-09-22 的实测——其模型下拉来自 `/v1/models` 过滤 `can_do_text_to_speech`，普通 HTTP `/v1/text-to-speech` 整段合成正常，只有 `previous_request_ids` / `next_request_ids` 不支持（本插件不发这两个参数）。它的 `/v1/models` 元数据当时拉不到，见 P1#6。其余 4 项及 turbo 的弃用状态截至 2026-09-25 无变化。
 - **历史记录**：v1.0.3 的 21 个音色是当时 payg 账号 live `/v1/voices` 的 premade 全集，并按女声/男声/中性与口音人工排序；当时默认值为 Bella。该菜单已在 v1.0.6 被 19 个官方接班音色替换，不能再当作当前状态

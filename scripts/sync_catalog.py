@@ -39,9 +39,16 @@ MODEL_TITLES = {
     "eleven_flash_v2_5": "Flash v2.5 — 最快、最便宜（32 语言，推荐划词朗读）",
     "eleven_multilingual_v2": "Multilingual v2 — 音质最稳、情感自然（29 语言）",
     "eleven_v3": "v3 — 表现力最强、支持 70+ 语言（较慢、较贵）",
+    "eleven_v3_conversational": "v3 Conversational — v3 的低延迟版、表现力强（70+ 语言）",
     "eleven_flash_v2": "Flash v2 — 仅英语，超低延迟",
 }
-MODEL_ORDER = ["eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2"]
+MODEL_ORDER = [
+    "eleven_flash_v2_5",
+    "eleven_multilingual_v2",
+    "eleven_v3",
+    "eleven_v3_conversational",
+    "eleven_flash_v2",
+]
 
 # 官方原文：「All our Default voices will expire on December 31, 2026」——
 # 这 21 个 Default(premade) 音色全部到期。v1.0.6 起菜单已换成官方指定的接班音色

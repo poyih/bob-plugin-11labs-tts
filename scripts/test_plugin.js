@@ -238,6 +238,15 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.type === "param" && r.error.message.indexOf("10000") > 0,
         "超过 multilingual_v2 的 10000 字上限时报 param");
 
+    // 5b. v3 Conversational 必须在 MODELS 表里登记，不能靠 FALLBACK 兜底（数值相同只是巧合）
+    ok(configModule.MODELS.eleven_v3_conversational &&
+        configModule.MODELS.eleven_v3_conversational.charLimit === 5000,
+        "v3 Conversational 在 MODELS 表里登记了 5000 字上限");
+    withOptions({ model: "eleven_v3_conversational" });
+    r = await speak({ text: new Array(5002).join("x"), lang: "en" });
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("5000") > 0,
+        "超过 v3 Conversational 的 5000 字上限时报 param");
+
     // 6. multilingual_v2 不下发 language_code
     withOptions({ model: "eleven_multilingual_v2" });
     nextResponse = audioResponse(200);
@@ -433,6 +442,12 @@ var EN = { text: "hello world", lang: "en" };
     await speak({ text: "hallo", lang: "af" });
     ok(lastRequest.body.language_code === "af", "v3（全语言）+ af 下发 language_code=af");
 
+    withOptions({ model: "eleven_v3_conversational" });
+    nextResponse = audioResponse(200);
+    await speak({ text: "hallo", lang: "af" });
+    ok(lastRequest.body.language_code === "af",
+        "v3 Conversational（与 v3 同语言集）+ af 下发 language_code=af");
+
     // 20. 输出格式越档（192kbps 需 Creator+）：实测 403，code=subscription_required /
     // status=output_format_not_allowed。曾被 401/403 兜底误报成「Key 无效」，必须前置拦截。
     withOptions({});
@@ -542,6 +557,17 @@ var EN = { text: "hello world", lang: "en" };
     ok(vs3 && vs3.stability === 0.5 && vs3.speed === 1.1 && vs3.similarity_boost === 0.75,
         "v3 仍下发 stability / speed / similarity_boost");
     ok(loggedLine("voice_settings 丢弃（eleven_v3 不支持）"), "丢弃的字段写进日志");
+
+    // v3 Conversational 按 v3 同样门控
+    withOptions({ model: "eleven_v3_conversational", stability: "0.5", style: "0.3", speakerBoost: "true" });
+    nextResponse = audioResponse(200);
+    logs = [];
+    await speak(EN);
+    var vsConv = lastRequest.body.voice_settings;
+    ok(vsConv && vsConv.style === undefined && vsConv.use_speaker_boost === undefined && vsConv.stability === 0.5,
+        "v3 Conversational 不下发 style / use_speaker_boost，仍下发 stability");
+    ok(loggedLine("voice_settings 丢弃（eleven_v3_conversational 不支持）"),
+        "v3 Conversational 丢弃的字段写进日志");
 
     // flash_v2_5 同样门控 style / speaker_boost
     withOptions({ model: "eleven_flash_v2_5", style: "0.3", speakerBoost: "false" });
