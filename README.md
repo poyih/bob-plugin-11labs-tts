@@ -12,7 +12,7 @@
 
 **不覆盖你的音色设置。** 默认完全不下发 `voice_settings`，沿用你在 ElevenLabs 网站上给该音色保存的配置；需要时再逐项覆盖稳定性、相似度、风格、语速、Speaker Boost。
 
-**默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3；v3 Conversational 是 v3 的低延迟版，想要表现力又不想多等可以选它。音频码率可调，32kbps 能明显缩短等待。
+**默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3；v3 Conversational 是 v3 的低延迟版，按字符计费也只要 v3 的一半，想要表现力又不想多等可以选它。音频码率可调，32kbps 能明显缩短等待。
 
 **84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
@@ -33,7 +33,7 @@ make install
 | 选项 | 说明 |
 |---|---|
 | API Key | 密文输入，只发给 `api.elevenlabs.io` |
-| 模型 | 默认 Flash v2.5。要更好的情感表现换 Multilingual v2 或 v3（更慢更贵）；v3 Conversational 是 v3 的低延迟版（2026-08 上线） |
+| 模型 | 默认 Flash v2.5。要更好的情感表现换 Multilingual v2 或 v3（更慢更贵）；v3 Conversational 是 v3 的低延迟版，计费为 v3 的 0.5 倍（2026-08 上线） |
 | 音色 | 19 个官方接班音色（名称与描述取自官方替换表）；选「▸ 使用下方填写的自定义 Voice ID」可用自己的音色 |
 | 自定义 Voice ID | 填了就优先生效。在 elevenlabs.io 音色详情页复制 Voice ID |
 | 音频格式 | 朗读场景 32~64kbps 通常够用，还能明显缩短等待 |
