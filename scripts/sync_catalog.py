@@ -34,20 +34,25 @@ CUSTOM_VOICE = "__custom__"
 # ElevenLabs 已标记 deprecated（/v1/models 仍会返回），不进菜单
 DEPRECATED_MODELS = {"eleven_turbo_v2_5", "eleven_turbo_v2"}
 
+# 菜单精简策略，区别于官方弃用：旧配置仍由 config.js 保留兼容能力。
+HIDDEN_MODELS = {"eleven_flash_v2"}
+
 # API 的模型描述是长英文，菜单里读不动，用中文短标题覆盖
 MODEL_TITLES = {
-    "eleven_flash_v2_5": "Flash v2.5 — 最快、最便宜（32 语言，推荐划词朗读）",
+    "eleven_flash_v2_5": "Flash v2.5 — 快速、省额度（32 语言，推荐划词朗读）",
+    "eleven_v4": "v4 — 最新高音质、情感丰富（90+ 语言）",
+    "eleven_v4_turbo": "v4 Turbo — 高表现力、低延迟（90+ 语言）",
     "eleven_multilingual_v2": "Multilingual v2 — 音质最稳、情感自然（29 语言）",
-    "eleven_v3": "v3 — 表现力最强、支持 70+ 语言（较慢、较贵）",
+    "eleven_v3": "v3 — 表现力强、支持 70+ 语言（较慢、较贵）",
     "eleven_v3_conversational": "v3 Conversational — v3 的低延迟版、表现力强（70+ 语言）",
-    "eleven_flash_v2": "Flash v2 — 仅英语，超低延迟",
 }
 MODEL_ORDER = [
     "eleven_flash_v2_5",
+    "eleven_v4",
+    "eleven_v4_turbo",
     "eleven_multilingual_v2",
     "eleven_v3",
     "eleven_v3_conversational",
-    "eleven_flash_v2",
 ]
 
 # 官方原文：「All our Default voices will expire on December 31, 2026」——
@@ -201,6 +206,9 @@ def apply_overlay(info):
     for entry in model_option.get("menuValues", []):
         if entry["value"] in DEPRECATED_MODELS:
             print(f"- 模型  {entry['value']}  已废弃，移出菜单")
+            continue
+        if entry["value"] in HIDDEN_MODELS:
+            print(f"- 模型  {entry['value']}  从菜单隐藏，旧配置仍兼容")
             continue
         title = MODEL_TITLES.get(entry["value"])
         if title and entry["title"] != title:

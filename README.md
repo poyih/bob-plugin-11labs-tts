@@ -2,6 +2,8 @@
 
 给 [Bob](https://bobtranslate.com) 用的 ElevenLabs TTS 插件，划词之后直接用 AI 语音朗读。
 
+**v1.0.11 支持 Eleven v4 与 v4 Turbo。** 在模型菜单中选择即可。v4 使用 HTTP 合成，v4 Turbo 使用官方对话 WebSocket 协议；插件收齐音频后交给 Bob 播放。菜单已隐藏 Flash v2，保留 Flash v2.5、Multilingual v2、v4、v4 Turbo、v3 和 v3 Conversational。
+
 > v1.0.6 起，音色菜单已换成 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的 **19 个接班音色**，可长期使用。老音色仍能用到年底：若你此前选过，Bob 会保留旧配置继续发送，插件会在日志里提示到期与对应的接班音色。
 
 ## 特点
@@ -13,6 +15,8 @@
 **不覆盖你的音色设置。** 默认完全不下发 `voice_settings`，沿用你在 ElevenLabs 网站上给该音色保存的配置；需要时再逐项覆盖稳定性、相似度、风格、语速、Speaker Boost。
 
 **默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3；v3 Conversational 是 v3 的低延迟版，按字符计费也只要 v3 的一半，想要表现力又不想多等可以选它。音频码率可调，32kbps 能明显缩短等待。
+
+**v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
 **84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
@@ -33,11 +37,11 @@ make install
 | 选项 | 说明 |
 |---|---|
 | API Key | 密文输入，只发给 `api.elevenlabs.io` |
-| 模型 | 默认 Flash v2.5。要更好的情感表现换 Multilingual v2 或 v3（更慢更贵）；v3 Conversational 是 v3 的低延迟版，计费为 v3 的 0.5 倍（2026-08 上线） |
+| 模型 | 默认 Flash v2.5。新增 v4（最新音质与表现力）和 v4 Turbo（高表现力、低延迟）；保留 Multilingual v2、v3 与 v3 Conversational |
 | 音色 | 19 个官方接班音色（名称与描述取自官方替换表）；选「▸ 使用下方填写的自定义 Voice ID」可用自己的音色 |
 | 自定义 Voice ID | 填了就优先生效。在 elevenlabs.io 音色详情页复制 Voice ID |
 | 音频格式 | 朗读场景 32~64kbps 通常够用，还能明显缩短等待 |
-| 稳定性 / 相似度 / 风格 / 语速 / Speaker Boost | 默认「跟随音色自带设置」，即完全不覆盖官网上的配置 |
+| 稳定性 / 相似度 / 风格 / 语速 / Speaker Boost | 默认不覆盖官网配置。v4 系列仅支持稳定性和相似度，其他设置会被忽略 |
 
 ## 常见报错
 
@@ -50,7 +54,7 @@ make install
 | API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
 | 音色不存在 | 自定义 Voice ID 写错，或那个音色不在当前账号下 |
-| 文本超过该模型单次字符上限 | 各模型上限不同，且按账号档位区分。分段朗读即可 |
+| 文本超过单次字符上限 | 各模型限制不同；v4 为 10000 字符，Turbo 的 10000 为插件本地限制。分段朗读即可 |
 | 请求过于频繁 | 触发并发限制，稍等重试 |
 
 ## 开发
@@ -72,6 +76,7 @@ make sync
 同步之后会自动套一遍**展示层规则**（定义在 `scripts/sync_catalog.py` 顶部）：
 
 - 过滤 ElevenLabs 已标记 deprecated 的模型 —— `/v1/models` 仍会返回它们，不过滤就会被带回菜单
+- 隐藏 Flash v2，同步时也不会重新加入菜单；Bob 已保存的 Flash v2 配置仍可合成，切换模型需在设置中重新选择
 - 用中文短标题覆盖 API 的长英文描述
 - 给退役名单上的音色加「2026-12-31 停用」标注，保留既有人工顺序，并保证自定义项在末尾
 - 校验 `defaultValue` 还在菜单里；`__custom__` 是合法默认值，不会被误重置
@@ -125,6 +130,7 @@ src/
   info.json   插件元信息与设置项
   main.js     tts / pluginValidate / supportLanguages
   config.js   API 地址、各模型字符上限与 language_code 支持、Bob↔ISO 语言映射
+  transport.js HTTP 与 v4 Turbo 对话 WebSocket，音频分块拼接与连接清理
   icon.png    插件图标
 scripts/
   test_plugin.js    jsc 测试（桩掉 $http / $data / $option）

@@ -37,6 +37,19 @@ function utf8Bytes(str) {
 
 var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+function unbase64(text) {
+    var bytes = [];
+    for (var i = 0; i < text.length; i += 4) {
+        var n = (B64.indexOf(text[i]) << 18) | (B64.indexOf(text[i + 1]) << 12) |
+            ((text[i + 2] === "=" ? 0 : B64.indexOf(text[i + 2])) << 6) |
+            (text[i + 3] === "=" ? 0 : B64.indexOf(text[i + 3]));
+        bytes.push((n >> 16) & 255);
+        if (text[i + 2] !== "=") { bytes.push((n >> 8) & 255); }
+        if (text[i + 3] !== "=") { bytes.push(n & 255); }
+    }
+    return bytes;
+}
+
 function base64(bytes) {
     var out = "";
     for (var i = 0; i < bytes.length; i += 3) {
@@ -59,6 +72,8 @@ function makeData(bytes) {
         toBase64: function () {
             return base64(bytes);
         },
+        toByteArray: function () { return bytes.slice(); },
+        appendData: function (data) { bytes = bytes.concat(data.toByteArray()); },
         toUTF8: function () {
             var s = "";
             for (var i = 0; i < bytes.length; i++) {
@@ -78,7 +93,8 @@ globalThis.$data = {
     },
     fromUTF8: function (s) {
         return makeData(utf8Bytes(s));
-    }
+    },
+    fromBase64: function (s) { return makeData(unbase64(s)); }
 };
 
 var logs = [];
@@ -146,6 +162,64 @@ function binaryResponse(statusCode, mimeType) {
     };
 }
 
+// WebSocket / timer 桩按脚本发事件，不联网、不需要实际等待。
+var nextSocketEvents = [];
+var sockets = [];
+var timers = [];
+globalThis.$timer = {
+    schedule: function (options) {
+        timers.push({ options: options, active: true });
+        return timers.length - 1;
+    },
+    invalidate: function (id) { timers[id].active = false; }
+};
+globalThis.$websocket = {
+    new: function (options) {
+        var handlers = {};
+        var events = nextSocketEvents.slice();
+        var socket = {
+            options: options,
+            sent: [],
+            closed: false,
+            listenOpen: function (f) { handlers.open = f; },
+            listenClose: function (f) { handlers.close = f; },
+            listenError: function (f) { handlers.error = f; },
+            listenReceiveString: function (f) { handlers.message = f; },
+            listenReceiveData: function (f) { handlers.data = f; },
+            sendString: function (s) { this.sent.push(JSON.parse(s)); },
+            close: function () {
+                this.closed = true;
+                handlers.close(this, 1000, "client closed");
+            },
+            open: function () {
+                var self = this;
+                var timer = timers[timers.length - 1];
+                Promise.resolve().then(function () {
+                    handlers.open(self);
+                    events.forEach(function (event) {
+                        if (event.type === "message") {
+                            handlers.message(self, typeof event.value === "string"
+                                ? event.value : JSON.stringify(event.value));
+                        } else if (event.type === "data") {
+                            handlers.data(self, $data.fromUTF8(JSON.stringify(event.value)));
+                        } else if (event.type === "close") {
+                            handlers.close(self, event.code, "server closed");
+                        } else if (event.type === "error") {
+                            handlers.error(self, event.value);
+                        } else if (event.type === "bad-data") {
+                            handlers.data(self, { toUTF8: function () { throw null; } });
+                        } else if (event.type === "timeout" && timer.active) {
+                            timer.options.handler();
+                        }
+                    });
+                });
+            }
+        };
+        sockets.push(socket);
+        return socket;
+    }
+};
+
 // ------------------------------------------------------------ 加载插件
 
 globalThis.exports = {};
@@ -156,8 +230,15 @@ globalThis.require = function (path) {
     if (path === "./config.js" || path === "config.js") {
         return configModule;
     }
+    if (path === "./transport.js") {
+        return transportModule;
+    }
     throw new Error("未知模块: " + path);
 };
+
+globalThis.exports = {};
+load("src/transport.js");
+var transportModule = globalThis.exports;
 
 globalThis.exports = {};
 load("src/main.js");
@@ -193,6 +274,19 @@ function speak(query) {
     return new Promise(function (resolve) {
         plugin.tts(query, resolve);
     });
+}
+
+function validate() {
+    return new Promise(function (resolve) { plugin.pluginValidate(resolve); });
+}
+
+function socketAudioEvents() {
+    return [
+        { type: "message", value: { audio: "SQ==" } },
+        { type: "message", value: { is_final_audio_for_turn: true } },
+        { type: "data", value: { audio: "RDM=" } },
+        { type: "message", value: { audio: "//uQAA==", is_final: true } }
+    ];
 }
 
 var EN = { text: "hello world", lang: "en" };
@@ -603,6 +697,170 @@ var EN = { text: "hello world", lang: "en" };
     ok(r.error && r.error.message.indexOf("无权使用该音色") > 0 &&
         r.error.message.indexOf("免费订阅") < 0,
         "voice_access_denied 不擅自归因于免费订阅");
+
+    // 29. v4 在 5000 与 10000 之间仍能合成，不能落入旧模型的保守兜底。
+    withOptions({ model: "eleven_v4", customVoiceId: "myCloneVoice", stability: "0.5",
+        similarityBoost: "0.75", speed: "1.1", style: "0.3", speakerBoost: "true" });
+    nextResponse = audioResponse(200);
+    logs = [];
+    r = await speak({ text: new Array(6001).join("x"), lang: "zh-Hans" });
+    ok(r.result && lastRequest.body.model_id === "eleven_v4" &&
+        lastRequest.body.text.length === 6000, "v4 支持 6000 字符，不误用 5000 的兜底上限");
+    ok(lastRequest.url.indexOf("/text-to-speech/myCloneVoice?") > 0,
+        "v4 使用官方支持的 HTTP TTS 端点和自定义音色");
+    var v4settings = lastRequest.body.voice_settings;
+    ok(v4settings.stability === 0.5 && v4settings.similarity_boost === 0.75 &&
+        Object.keys(v4settings).length === 2, "v4 只下发稳定性和相似度，丢弃语速/风格/Boost");
+    ok(loggedLine("style,speed,use_speaker_boost"), "v4 被忽略的设置写入日志");
+    ok(lastRequest.body.language_code === "zh", "v4 普通话使用 language_code=zh");
+
+    withOptions({ model: "eleven_v4" });
+    r = await speak({ text: new Array(10001).join("x"), lang: "en" });
+    ok(r.result, "v4 恰好 10000 字符可请求");
+    lastRequest = null;
+    r = await speak({ text: new Array(10002).join("x"), lang: "en" });
+    ok(r.error && r.error.type === "param" && lastRequest === null,
+        "v4 超出 10000 字符在请求前拒绝");
+    await speak({ text: "你好", lang: "yue" });
+    ok(lastRequest.body.language_code === "yue", "v4 粤语使用 yue，保留原生语种");
+    await speak({ text: "hallo", lang: "nb" });
+    ok(lastRequest.body.language_code === "nb", "v4 Norwegian Bokmål 使用 nb");
+    await speak({ text: "hallo", lang: "no" });
+    ok(lastRequest.body.language_code === "nb", "v4 对 Bob 的 no 别名也使用 Bokmål 代码");
+    await speak({ text: "hello", lang: "ga" });
+    ok(lastRequest.body.language_code === undefined, "v4 不下发官方名单外的 Irish 语言代码");
+    withOptions({});
+    await speak({ text: "你好", lang: "yue" });
+    ok(lastRequest.body.language_code === "zh", "旧模型保持粤语映射兼容行为");
+
+    // 30. 两条入口的参数构造与成功响应校验必须一致。
+    withOptions({ model: "eleven_v4", stability: "0.5", similarityBoost: "0.75", speed: "1.1" });
+    v = await validate();
+    ok(v.result === true && lastRequest.body.model_id === "eleven_v4" &&
+        lastRequest.body.text === "a" && lastRequest.body.voice_settings.similarity_boost === 0.75 &&
+        lastRequest.body.voice_settings.speed === undefined, "v4 验证使用实际合成参数及门控");
+    nextResponse = { response: { statusCode: 200, MIMEType: "audio/mpeg" },
+        data: makeData([]), rawData: makeData([]) };
+    v = await validate();
+    ok(v.result === false && v.error.type === "api", "配置验证拒绝 2xx 空音频");
+    nextResponse = jsonResponse(200, { detail: { message: "gateway returned JSON" } });
+    delete nextResponse.response.headers;
+    v = await validate();
+    ok(v.result === false && v.error.type === "api", "配置验证拒绝缺少 MIME 的 JSON 原始二进制体");
+
+    var savedNow = Date.now;
+    Date.now = function () { return Date.UTC(2027, 0, 1); };
+    withOptions({ customVoiceId: "EXAVITQu4vr4xnSDxMaL" });
+    lastRequest = null;
+    v = await validate();
+    Date.now = savedNow;
+    ok(v.result === false && v.error.type === "notFound" && lastRequest === null,
+        "配置验证与朗读均在请求前拦截到期音色");
+
+    // 31. Turbo 分块带 padding，必须解码后按字节拼接并等待整个会话 final。
+    withOptions({ model: "eleven_v4_turbo", customVoiceId: "myCloneVoice", stability: "0.5",
+        similarityBoost: "0.75", style: "0.3", speed: "1.1", speakerBoost: "true" });
+    nextSocketEvents = socketAudioEvents();
+    lastRequest = null;
+    r = await speak({ text: "你好", lang: "yue" });
+    var ws = sockets[sockets.length - 1];
+    ok(r.result && r.result.value === "SUQz//uQAA==", "Turbo 合并带 padding 的全部音频分块，包含 turn 结束后的尾部");
+    ok(lastRequest === null && ws.options.url.indexOf("wss://api.elevenlabs.io/v1/text-to-dialogue/stream-input?") === 0,
+        "Turbo 使用对话 WebSocket，不误发 HTTP TTS 请求");
+    ok(ws.options.url.indexOf("model_id=eleven_v4_turbo") > 0 &&
+        ws.options.url.indexOf("output_format=mp3_44100_128") > 0 &&
+        ws.options.url.indexOf("language_code=yue") > 0, "Turbo URL 包含实际模型、音频格式和粤语代码");
+    ok(ws.options.header["xi-api-key"] === "sk_test" && ws.options.url.indexOf("sk_test") < 0,
+        "Turbo Key 放在请求头，不进入 URL");
+    ok(ws.sent[0].voices.length === 1 && ws.sent[0].voices[0] === "myCloneVoice" &&
+        Object.keys(ws.sent[0].voice_settings).length === 2, "Turbo 首帧登记一个音色且仅传两项受支持设置");
+    ok(ws.sent[1].inputs[0].text === "你好" && ws.sent[1].inputs[0].voice_id === "myCloneVoice" &&
+        ws.sent[2].close_socket === true, "Turbo 发送原文并用 close_socket flush 短文本");
+    ok(ws.closed && !timers[timers.length - 1].active && ws.options.timeoutInterval === 50,
+        "Turbo 成功后关闭连接、取消定时器，超时早于宿主");
+    ok(r.result.raw.model_id === "eleven_v4_turbo", "Turbo 结果元数据保留实际模型");
+
+    withOptions({ model: "eleven_v4_turbo" });
+    nextSocketEvents = socketAudioEvents();
+    v = await validate();
+    ws = sockets[sockets.length - 1];
+    ok(v.result === true && ws.sent[1].inputs[0].text === "a" && ws.sent[2].close_socket === true,
+        "Turbo 配置验证也用 WebSocket 单字符合成并 flush");
+    ok(ws.options.timeoutInterval === 15 && ws.closed, "Turbo 验证遵守验证超时并清理连接");
+    await speak({ text: new Array(10001).join("x"), lang: "en" });
+    var socketCount = sockets.length;
+    r = await speak({ text: new Array(10002).join("x"), lang: "en" });
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("插件单次上限") >= 0 &&
+        sockets.length === socketCount, "Turbo 明确标注本地 10000 字符上限，超长文本不建连接");
+
+    // 32. 失败时不播放部分音频，且所有终止路径都关闭 socket / 清理 timer。
+    nextSocketEvents = [{ type: "message", value: { error: "insufficient_permissions", message: "no tts scope" } }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "secretKey" && r.error.message.indexOf("缺少权限") >= 0,
+        "Turbo 协议错误沿用 ElevenLabs 错误码映射");
+    nextSocketEvents = [{ type: "message", value: { is_final: true } }];
+    v = await validate();
+    ok(v.result === false && v.error.type === "api", "Turbo 无音频 final 不通过配置验证");
+    nextSocketEvents = [{ type: "message", value: { audio: "SQ==" } }, { type: "close", code: 1006 }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "network" && !r.result, "Turbo 提前断开时拒绝部分音频");
+    nextSocketEvents = [{ type: "message", value: { audio: "SQ==" } }, { type: "timeout" },
+        { type: "message", value: { audio: "RDM=", is_final: true } }];
+    var callbackCount = 0;
+    r = await new Promise(function (resolve) {
+        plugin.tts(EN, function (result) { callbackCount += 1; resolve(result); });
+    });
+    ok(r.error && r.error.type === "network" && callbackCount === 1,
+        "Turbo 超时后忽略迟到 final，仅回调一次");
+    ok(sockets[sockets.length - 1].closed && !timers[timers.length - 1].active,
+        "Turbo 失败后同样关闭连接、取消定时器");
+    nextSocketEvents = [{ type: "message", value: "not JSON" }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api", "Turbo 无效 JSON 响应明确报错");
+    nextSocketEvents = [{ type: "message", value: { audio: "invalid***", is_final: true } }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api", "Turbo 无效 base64 不当作音频");
+    nextSocketEvents = [{ type: "error", value: { message: "handshake failed" } }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "network", "Turbo 握手网络错误可回传");
+
+    nextSocketEvents = [{ type: "message", value: { error: "authorization_error", code: "insufficient_permissions",
+        message: "no scope", status_code: 403 } }];
+    r = await speak(EN);
+    ok(r.error && r.error.message.indexOf("缺少权限") >= 0, "Turbo 帧中独立的 code 字段同样保留具体错误含义");
+    nextSocketEvents = [{ type: "message", value: { error: "unknown_protocol_error", message: "generation refused" } }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api" && r.error.message.indexOf("HTTP") < 0 &&
+        r.error.message.indexOf("generation refused") >= 0, "Turbo 未知协议错误不捏造 HTTP 状态码");
+    nextSocketEvents = [{ type: "message", value: { error: "authentication_required", code: 1008,
+        message: "API key required" } }];
+    v = await validate();
+    ok(v.result === false && v.error.type === "secretKey" && v.error.message.indexOf("认证") >= 0,
+        "Turbo 官方错误帧中的 WebSocket 1008 不误当 HTTP 状态，并提示认证失败");
+    nextSocketEvents = [{ type: "bad-data" }];
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api", "Turbo 原生数据转换异常仍能结束请求");
+    var savedNewSocket = $websocket.new;
+    $websocket.new = function () { throw null; };
+    r = await speak(EN);
+    $websocket.new = savedNewSocket;
+    ok(r.error && r.error.type === "network", "Turbo 创建连接抛出 null 时也明确失败");
+
+    // 并行请求各自保存参数、分块和定时器，不能串音或交叉清理。
+    withOptions({ model: "eleven_v4_turbo", customVoiceId: "voiceA" });
+    nextSocketEvents = socketAudioEvents();
+    var socketStart = sockets.length;
+    var timerStart = timers.length;
+    var speakingA = speak({ text: "A", lang: "en" });
+    withOptions({ model: "eleven_v4_turbo", customVoiceId: "voiceB" });
+    nextSocketEvents = [{ type: "message", value: { audio: "Qg==", is_final: true } }];
+    var speakingB = speak({ text: "B", lang: "en" });
+    var both = await Promise.all([speakingA, speakingB]);
+    ok(both[0].result.value === "SUQz//uQAA==" && both[1].result.value === "Qg==" &&
+        sockets[socketStart].sent[0].voices[0] === "voiceA" &&
+        sockets[socketStart + 1].sent[0].voices[0] === "voiceB", "并行 Turbo 请求保持参数和音频隔离");
+    ok(!timers[timerStart].active && !timers[timerStart + 1].active,
+        "并行 Turbo 请求各自清理定时器");
 
     print("");
     if (failures.length === 0) {

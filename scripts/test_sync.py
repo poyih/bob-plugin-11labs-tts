@@ -4,7 +4,7 @@
 apply_overlay 是展示层规则的唯一入口，过去靠人眼盯。这里把它锁死：
 
 - 过滤 DEPRECATED_MODELS（turbo_v2_5 / turbo_v2）出菜单
-- 模型按 MODEL_ORDER 排序
+- 模型按 MODEL_ORDER 排序，Flash v2 从菜单隐藏并在同步后继续过滤
 - 退役音色追加「（2026-12-31 停用）」后缀，长期可用音色不加
 - __custom__ 始终排到最末、且不加退役后缀
 - 音色 menuValues 的既有顺序被保留（v1.0.3 起手工排过，不能再被 sort 冲掉）
@@ -81,8 +81,8 @@ def test_deprecated_models_filtered():
 # 2. 模型按 MODEL_ORDER 排序 ----------------------------------------------
 def test_model_order():
     info = _info(
-        ["eleven_v3", "eleven_flash_v2", "eleven_v3_conversational",
-         "eleven_flash_v2_5", "eleven_multilingual_v2"],
+        ["eleven_v3", "eleven_v4_turbo", "eleven_flash_v2", "eleven_v3_conversational",
+         "eleven_flash_v2_5", "eleven_v4", "eleven_multilingual_v2"],
         ["hpp4J3VqNfWAUOO0d1Us", CUSTOM],
     )
     sync.apply_overlay(info)

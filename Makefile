@@ -3,6 +3,7 @@ NAME    := bob-plugin-11labs-tts
 VERSION := $(shell python3 -c 'import json; print(json.load(open("src/info.json"))["version"])')
 BUNDLE  := dist/$(NAME)-$(VERSION).bobplugin
 PYFILES := $(sort $(wildcard scripts/*.py))
+JSFILES := $(sort $(wildcard src/*.js scripts/test_*.js))
 
 .DEFAULT_GOAL := help
 
@@ -10,7 +11,7 @@ help: ## 显示可用命令
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 lint: ## 检查全部 JS/Python 语法和 JSON 格式
-	@$(JSC) -e 'var fs=["src/main.js","src/config.js","scripts/test_plugin.js"]; for (var i=0;i<fs.length;i++){ checkSyntax(fs[i]); print("syntax ok  "+fs[i]); }'
+	@$(JSC) -e 'var fs="$(JSFILES)".split(" "); for (var i=0;i<fs.length;i++){ checkSyntax(fs[i]); print("syntax ok  "+fs[i]); }'
 	@PYTHONDONTWRITEBYTECODE=1 python3 -c 'from pathlib import Path; fs=[Path(f) for f in "$(PYFILES)".split()]; [compile(p.read_text(encoding="utf-8"), str(p), "exec") for p in fs]; [print("syntax ok  "+str(p)) for p in fs]'
 	@python3 -c 'import json; [print("json ok    "+f) for f in ["src/info.json","appcast.json"] if json.load(open(f)) is not None]'
 

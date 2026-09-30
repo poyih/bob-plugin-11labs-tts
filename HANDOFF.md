@@ -4,7 +4,24 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.9，功能可用。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0.11；新增 v4 系列并精简模型菜单。
+
+### 2026-09-30：菜单精简与试用反馈
+
+- 用户反馈 v1.0.10 初步试用「没什么问题」。具体模型、语言、账户档位及设置组合未留记录，不能据此把下面所有真机验收项标为完成。
+- v1.0.11 从菜单移除 Flash v2；v3 / v3 Conversational 暂留作回退。`config.js` 中旧模型的字符上限、语言及设置能力保持兼容，Bob 已保存的旧 ID 仍可使用。
+- `sync_catalog.py` 用独立的 `HIDDEN_MODELS` 过滤 Flash v2，避免以后同步重新带回菜单；这属于菜单策略，不将 Flash v2 标为官方弃用。
+
+### 2026-09-30：v4 接入（v1.0.10 本地试用，随 v1.0.11 发版）
+
+- 菜单增加 `eleven_v4` / `eleven_v4_turbo`，默认仍为 Flash v2.5。普通 v4 使用 `/v1/text-to-speech/{voice_id}`，依据 [官方 TTS 产品指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)。旧的 Models 概览只提 Text to Dialogue，不能据此断言 v4 不支持 HTTP TTS。
+- Turbo 使用 `/v1/text-to-dialogue/stream-input`，依据 [新版实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)。API reference 的部分叙述仍写仅限 v3，与新版指南不同；必须在 Bob 真机核验 v4 Turbo。
+- 两款的 speed / style / use_speaker_boost 不下发，只保留 stability / similarity_boost，依据 v4 产品指南。v4 的 HTTP 字符上限为 10000；Turbo 的 10000 是插件本地限制，未声称是官方 WebSocket 会话上限。
+- 模型语言表依据官方 v4 公布名单；粤语传 `yue`，未公布的 Irish / Chichewa 不强制语言代码。尚未用真实 Key 检验语言代码或听音。
+- `transport.js` 使用 Bob 的 `$websocket` / `$timer` / `$data.fromBase64` / `appendData`。分块按字节拼接，等 `is_final` 后才交给 Bob；`is_final_audio_for_turn` 不表示 MP3 编码器已 flush。超时、提前断线、异常协议响应都失败并释放连接，不播放部分音频。
+- 验证与朗读共用传输、参数门控、退役检查和音频判空；补回归测试，修复验证放过空音频及缺 MIME JSON 的问题。
+- `make test` 的协议桩覆盖 HTTP v4、带 padding 分块、尾部音频、短文本 flush、单字符验证、错误码、超时/断线与资源清理。尚无 `ELEVENLABS_API_KEY`，不把离线通过写成真实合成验证。
+- 完整真机验收清单：安装当前版本，分别选择 v4 / v4 Turbo；点验证并朗读短英文、普通话、粤语；覆盖稳定性和相似度，确认旧的语速设置不会造成参数错误。核对 Bob 日志及 ElevenLabs 用量，然后再走 tag 发布。
 
 问题不在功能，在于**一批结论只有文档依据、没有真机验证**。这个项目已经因此摔过三次：
 
@@ -17,7 +34,7 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前 v1.0.9，�
 ## 现成的工具
 
 ```bash
-make test                              # 插件 72 项检查 + sync 12 组 / tools 10 组测试，全程离线
+make test                              # 插件离线检查 + sync 12 组 / tools 10 组测试
 python3 scripts/verify_api.py          # 拿真实 Key 打 ElevenLabs，6 组探针，约 40~50 credits
 python3 scripts/verify_api.py --dry-run
 python3 scripts/resolve_voices.py --offline   # 官方 19 个接班音色 ID 对照表（不联网、不要 Key）

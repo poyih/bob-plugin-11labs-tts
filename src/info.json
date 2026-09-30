@@ -1,6 +1,6 @@
 {
     "identifier": "com.poyih.bob.plugin.elevenlabs.tts",
-    "version": "1.0.9",
+    "version": "1.0.11",
     "category": "tts",
     "name": "ElevenLabs 语音合成",
     "summary": "使用 ElevenLabs 的高质量 AI 语音朗读文本，支持自定义音色与克隆音色。",
@@ -27,27 +27,31 @@
             "defaultValue": "eleven_flash_v2_5",
             "menuValues": [
                 {
-                    "title": "Flash v2.5 — 最快、最便宜（32 语言，推荐划词朗读）",
+                    "title": "Flash v2.5 — 快速、省额度（32 语言，推荐划词朗读）",
                     "value": "eleven_flash_v2_5"
+                },
+                {
+                    "title": "v4 — 最新高音质、情感丰富（90+ 语言）",
+                    "value": "eleven_v4"
+                },
+                {
+                    "title": "v4 Turbo — 高表现力、低延迟（90+ 语言）",
+                    "value": "eleven_v4_turbo"
                 },
                 {
                     "title": "Multilingual v2 — 音质最稳、情感自然（29 语言）",
                     "value": "eleven_multilingual_v2"
                 },
                 {
-                    "title": "v3 — 表现力最强、支持 70+ 语言（较慢、较贵）",
+                    "title": "v3 — 表现力强、支持 70+ 语言（较慢、较贵）",
                     "value": "eleven_v3"
                 },
                 {
                     "title": "v3 Conversational — v3 的低延迟版、表现力强（70+ 语言）",
                     "value": "eleven_v3_conversational"
-                },
-                {
-                    "title": "Flash v2 — 仅英语，超低延迟",
-                    "value": "eleven_flash_v2"
                 }
             ],
-            "desc": "Flash 系列延迟约 75ms，适合即时朗读；Multilingual v2 和 v3 音质更好但更慢；v3 Conversational 是 v3 的低延迟版，兼顾表现力与速度。"
+            "desc": "Flash 适合划词即时朗读；v4 提供最新音质与表现力，单次最多 10000 字符；v4 Turbo 兼顾表现力与低延迟，插件单次也限制为 10000 字符。v4 系列仅支持稳定性和相似度设置，语速、风格和 Speaker Boost 不生效。"
         },
         {
             "identifier": "voice",
@@ -247,7 +251,7 @@
                     "value": "0.6"
                 }
             ],
-            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash v2.5 / Flash v2 / v3 / v3 Conversational 不支持（官方 /v1/models 元数据 can_use_style=false），本插件在这些模型上不会发送此参数。"
+            "desc": "放大原音色的说话风格，非 0 会增加延迟。仅在 Multilingual v2 模型上生效；Flash、v3、v3 Conversational、v4 和 v4 Turbo 不支持，插件会忽略此设置。"
         },
         {
             "identifier": "speed",
@@ -280,7 +284,7 @@
                     "value": "1.2"
                 }
             ],
-            "desc": "偏离 1.0 太多会影响音质。"
+            "desc": "偏离 1.0 太多会影响音质。v4 和 v4 Turbo 不支持语速设置，插件会忽略此项；可通过文本中的节奏和停顿提示调整。"
         },
         {
             "identifier": "speakerBoost",
@@ -301,7 +305,7 @@
                     "value": "false"
                 }
             ],
-            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 和 v3 Conversational 模型上生效；Flash v2.5 / Flash v2 / v3 不支持（官方 /v1/models 元数据 can_use_speaker_boost=false），本插件在这些模型上不会发送此参数。"
+            "desc": "增强与原始说话人的相似度，会略微增加延迟。仅在 Multilingual v2 和 v3 Conversational 模型上生效；Flash、v3、v4 和 v4 Turbo 不支持，插件会忽略此设置。"
         }
     ]
 }

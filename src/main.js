@@ -1,4 +1,5 @@
 var config = require("./config.js");
+var transport = require("./transport.js");
 
 var LOG_TAG = "[11labs-tts]";
 
@@ -209,6 +210,14 @@ function toServiceError(statusCode, body) {
             troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
         };
     }
+    // 对话 WebSocket 的认证错误使用这套机器可读标识，不附带 HTTP 状态码。
+    if (has(["authentication_required", "authentication_failed"])) {
+        return {
+            type: "secretKey",
+            message: "ElevenLabs 未接受 API Key 认证，请检查密钥" + detail,
+            troubleshootingLink: "https://elevenlabs.io/app/settings/api-keys"
+        };
+    }
     // 与 invalid_api_key 是两回事：Key 有效但没勾对权限，换 Key 没用。
     // 旧格式 401 + missing_permissions，新格式 403 + insufficient_permissions。
     if (has(["missing_permissions", "insufficient_permissions"])) {
@@ -262,8 +271,12 @@ function toServiceError(statusCode, body) {
     }
     return {
         type: "api",
-        message: "ElevenLabs 返回错误（HTTP " + statusCode + "）" + detail
+        message: (statusCode ? "ElevenLabs 返回错误（HTTP " + statusCode + "）" : "ElevenLabs 流式合成失败") + detail
     };
+}
+
+function responseError(resp) {
+    return toServiceError(resp.response.syntheticStatus ? 0 : resp.response.statusCode, resp.data);
 }
 
 function modelInfo(modelId) {
@@ -330,8 +343,7 @@ function resolveVoice() {
 }
 
 // 只把用户显式覆盖过的项发给 API，其余留空则沿用音色在 ElevenLabs 上保存的设置。
-// 再按模型能力门控：style 只有 multilingual_v2 支持，use_speaker_boost 只有 multilingual_v2
-// 和 v3_conversational 支持，其余模型（含 v3）会忽略，这里直接不发（详见 config.js MODEL_SETTINGS）。
+// 再按模型能力门控。v4 系列仅支持 stability / similarity_boost，详见 config.js。
 function buildVoiceSettings(modelId) {
     var settings = {};
     var dropped = [];
@@ -372,6 +384,65 @@ function buildVoiceSettings(modelId) {
     }
 
     return Object.keys(settings).length > 0 ? settings : null;
+}
+
+function buildSynthesisBody(text, modelId, language) {
+    var body = { text: text, model_id: modelId };
+    var code = config.languageCodeForModel(modelId, language);
+    if (code) {
+        body.language_code = code;
+    }
+    var settings = buildVoiceSettings(modelId);
+    if (settings) {
+        body.voice_settings = settings;
+    }
+    return body;
+}
+
+function checkVoiceLifecycle(voiceId) {
+    var legacyName = config.LEGACY_VOICES[voiceId];
+    if (legacyName) {
+        logInfo("warn " + legacyName + "（" + voiceId + "）是 Legacy 音色，可用性由账户权限决定");
+    }
+    var retiring = config.RETIRING_VOICES[voiceId];
+    if (!retiring) {
+        return;
+    }
+    if (Date.now() >= RETIRING_CUTOFF_UTC) {
+        throw {
+            type: "notFound",
+            message: retiring.name + "（" + voiceId + "）已于 2026-12-31 停用" +
+                (retiring.successor ? "，请改选官方接班音色 " + retiring.successor : "，请在设置里改选其他音色")
+        };
+    }
+    logInfo("warn 音色 " + retiring.name + "（" + voiceId + "）将于 2026-12-31 失效" +
+        (retiring.successor ? "，官方接班音色为 " + retiring.successor + "，请在设置里改选"
+            : "，官方未指定接班音色，请在设置里另选一个"));
+}
+
+// 验证与朗读共用：2xx / 二进制 rawData 都不足以证明返回了可播放的音频。
+function audioBase64(resp) {
+    var mimeType = responseMimeType(resp.response);
+    var objectBody = resp.data && typeof resp.data === "object" && !isBinary(resp.data);
+    if (objectBody || typeof resp.data === "string" || !isAudioMime(mimeType)) {
+        if (objectBody) {
+            throw responseError(resp);
+        }
+        var text = bodyToText(resp.data);
+        throw {
+            type: "api",
+            message: "ElevenLabs 返回的不是音频" +
+                (mimeType ? "（Content-Type: " + mimeType + "）" : "") +
+                (text ? "：" + text.slice(0, 200) : "")
+        };
+    }
+    var raw = resp.rawData || resp.data;
+    var encoded = raw && isBinary(raw) ? raw.toBase64() : "";
+    // Bob 的 $data 不暴露 length，使用 base64 判空。
+    if (!encoded) {
+        throw { type: "api", message: "ElevenLabs 返回了空音频" };
+    }
+    return encoded;
 }
 
 // ---------------------------------------------------------------- 插件接口
@@ -417,19 +488,15 @@ function pluginValidate(completion) {
         }
 
         try {
+            checkVoiceLifecycle(voice.id);
             var modelId = trimmed($option.model) || "eleven_flash_v2_5";
             var outputFormat = trimmed($option.outputFormat) || "mp3_44100_128";
-            var resp = await $http.request({
-                method: "POST",
-                url: config.API_BASE + "/text-to-speech/" +
-                    encodeURIComponent(voice.id) + "?output_format=" + encodeURIComponent(outputFormat),
-                header: {
-                    "xi-api-key": apiKey,
-                    "Content-Type": "application/json"
-                },
-                // 只有一次真实合成能无歧义地验证 text_to_speech scope、当前音色、
-                // 模型和输出格式。用单字符把验证成本压到最低。
-                body: { text: "a", model_id: modelId },
+            var resp = await transport.request({
+                apiKey: apiKey,
+                voiceId: voice.id,
+                outputFormat: outputFormat,
+                // 单字符验证也使用实际模型的传输协议和参数门控。
+                body: buildSynthesisBody("a", modelId),
                 timeout: 15
             });
 
@@ -461,34 +528,21 @@ function pluginValidate(completion) {
                 return;
             }
             if (statusCode >= 200 && statusCode < 300) {
-                var validationRaw = resp.rawData || resp.data;
-                var validationMime = responseMimeType(resp.response);
-                if (isBinary(validationRaw) && isAudioMime(validationMime)) {
-                    completion({ result: true });
-                    return;
-                }
-                completion({
-                    result: false,
-                    error: {
-                        type: "api",
-                        message: "验证端点返回的不是音频" +
-                            (validationMime ? "（Content-Type: " + validationMime + "）" : "")
-                    }
-                });
+                audioBase64(resp);
+                completion({ result: true });
                 return;
             }
-            var failure = toServiceError(statusCode, resp.data);
+            var failure = responseError(resp);
             ensureLinkVisible(failure);
             completion({ result: false, error: failure });
         } catch (err) {
-            completion({
-                result: false,
-                error: {
-                    type: "network",
-                    message: "验证失败：" + (err && err.message ? err.message : "未知错误"),
-                    addition: String(err)
-                }
-            });
+            var caught = err && err.type ? err : {
+                type: "network",
+                message: "验证失败：" + (err && err.message ? err.message : "未知错误"),
+                addition: String(err)
+            };
+            ensureLinkVisible(caught);
+            completion({ result: false, error: caught });
         }
     })();
 }
@@ -514,34 +568,7 @@ function tts(query, completion) {
                 };
             }
 
-            // Legacy 音色的可用性取决于账户和订阅。不能在客户端一刀切拦截：
-            // 已验证付费/按量账户仍可能成功，具体结果交给 API 判定。
-            var legacyName = config.LEGACY_VOICES[voiceId];
-            if (legacyName) {
-                logInfo("warn " + legacyName + "（" + voiceId + "）是 Legacy 音色，可用性由账户权限决定");
-            }
-
-            // 老音色在截止日前只警告；截止后明确拦截，避免 Bob 保存的旧值继续发出
-            // 注定失败的请求。
-            var retiring = config.RETIRING_VOICES[voiceId];
-            if (retiring) {
-                if (Date.now() >= RETIRING_CUTOFF_UTC) {
-                    throw {
-                        type: "notFound",
-                        message:
-                            retiring.name + "（" + voiceId + "）已于 2026-12-31 停用" +
-                            (retiring.successor
-                                ? "，请改选官方接班音色 " + retiring.successor
-                                : "，请在设置里改选其他音色")
-                    };
-                }
-                logInfo(
-                    "warn 音色 " + retiring.name + "（" + voiceId + "）将于 2026-12-31 失效" +
-                    (retiring.successor
-                        ? "，官方接班音色为 " + retiring.successor + "，请在设置里改选"
-                        : "，官方未指定接班音色，请在设置里另选一个")
-                );
-            }
+            checkVoiceLifecycle(voiceId);
 
             var text = query && typeof query.text === "string" ? query.text : "";
             if (!trimmed(text)) {
@@ -555,24 +582,13 @@ function tts(query, completion) {
                     type: "param",
                     message:
                         "文本长度 " + text.length + " 超过 " + modelId +
-                        " 的单次上限 " + info.charLimit + " 字符，请分段朗读"
+                        (info.localLimit ? " 的插件单次上限 " : " 的单次上限 ") +
+                        info.charLimit + " 字符，请分段朗读"
                 };
             }
 
-            var body = { text: text, model_id: modelId };
-
-            // 只下发该模型确实支持的 language_code：模型对支持列表外的 code 直接回
-            // 400 unsupported_language（实测，非文档所说的「忽略」），所以按模型语言集门控；
-            // 不支持的就不下发，让模型自行识别（实测 flash_v2 + 中文不带 code 仍能合成）。
-            var languageCode = config.langMap.get(query && query.lang);
-            if (languageCode && config.modelAcceptsLanguage(modelId, languageCode)) {
-                body.language_code = languageCode;
-            }
-
-            var voiceSettings = buildVoiceSettings(modelId);
-            if (voiceSettings) {
-                body.voice_settings = voiceSettings;
-            }
+            var body = buildSynthesisBody(text, modelId, query && query.lang);
+            var voiceSettings = body.voice_settings;
 
             // 英语专用模型读别的语言会出怪音。不拦截（用户可能是故意的），
             // 但要在日志里留痕 —— Bob 会保留旧配置，这种错配很容易是残留造成的。
@@ -582,9 +598,6 @@ function tts(query, completion) {
             }
 
             var outputFormat = trimmed($option.outputFormat) || "mp3_44100_128";
-            var url = config.API_BASE + "/text-to-speech/" +
-                encodeURIComponent(voiceId) + "?output_format=" + encodeURIComponent(outputFormat);
-
             logInfo(
                 "start chars=" + text.length +
                 " lang=" + (query && query.lang ? query.lang : "-") +
@@ -596,13 +609,10 @@ function tts(query, completion) {
             );
             var startedAt = Date.now();
 
-            var resp = await $http.request({
-                method: "POST",
-                url: url,
-                header: {
-                    "xi-api-key": apiKey,
-                    "Content-Type": "application/json"
-                },
+            var resp = await transport.request({
+                apiKey: apiKey,
+                voiceId: voiceId,
+                outputFormat: outputFormat,
                 body: body,
                 timeout: 50
             });
@@ -626,7 +636,7 @@ function tts(query, completion) {
                 throw { type: "network", message: "ElevenLabs 请求没有收到有效的 HTTP 响应" };
             }
             if (statusCode < 200 || statusCode >= 300) {
-                var failure = toServiceError(statusCode, resp.data);
+                var failure = responseError(resp);
                 if (failure.type === "notFound" || statusCode === 402 || statusCode === 404) {
                     // Bob 会保留已保存的选项值，菜单里删掉的旧值依然会被发出去，
                     // 界面上却显示成菜单第一项。把真实 ID 带进报错，避免被界面误导。
@@ -634,40 +644,13 @@ function tts(query, completion) {
                         "，来源：" + (voice.source === "custom" ? "自定义输入框" : "音色菜单") + "）";
                 }
                 logInfo(
-                    "failed status=" + statusCode + " voice=" + voiceId +
+                    "failed status=" + (resp.response.syntheticStatus ? "websocket" : statusCode) + " voice=" + voiceId +
                     " model=" + modelId + " type=" + failure.type
                 );
                 throw failure;
             }
 
-            // 2xx 也必须验证响应形态。网关/代理可能返回 HTML 或纯文本，若直接
-            // base64 会被 Bob 当成音频，表现为无声且无报错。
-            var mimeType = responseMimeType(resp.response);
-            var objectBody = resp.data && typeof resp.data === "object" && !isBinary(resp.data);
-            if (objectBody || typeof resp.data === "string" || !isAudioMime(mimeType)) {
-                logInfo("failed status=" + statusCode + " 响应不是音频");
-                if (objectBody) {
-                    throw toServiceError(statusCode, resp.data);
-                }
-                throw {
-                    type: "api",
-                    message:
-                        "ElevenLabs 返回的不是音频" +
-                        (mimeType ? "（Content-Type: " + mimeType + "）" : "") +
-                        (bodyToText(resp.data)
-                            ? "：" + bodyToText(resp.data).slice(0, 200)
-                            : "")
-                };
-            }
-
-            var raw = resp.rawData || resp.data;
-            var audio = raw && isBinary(raw) ? raw : $data.fromData(raw);
-            // 不要用 audio.length 判空：Bob 实际运行时 $data 不暴露该属性（恒为
-            // undefined），拿它比较等于没有防护。base64 字符串长度才是可靠的。
-            var encoded = audio ? audio.toBase64() : "";
-            if (!encoded) {
-                throw { type: "api", message: "ElevenLabs 返回了空音频" };
-            }
+            var encoded = audioBase64(resp);
 
             logInfo(
                 "success status=" + statusCode + " base64_chars=" + encoded.length +

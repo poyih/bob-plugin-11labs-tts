@@ -1,7 +1,7 @@
 // ElevenLabs 服务的静态元信息。
 //
 // info.json 里的模型 / 音色菜单可以用 scripts/sync_catalog.py 从账号拉最新的，
-// 但「模型能力」这类 API 不返回的信息在这里手工维护。
+// 模型能力与接口兼容性在这里维护；API 元数据和官方文档是依据，新增项需单独核验。
 
 var API_BASE = "https://api.elevenlabs.io/v1";
 
@@ -12,6 +12,10 @@ var API_BASE = "https://api.elevenlabs.io/v1";
 // 「数字属于哪一档」的歧义，直接照搬即可。multilingual_v2=10000 这一档还用 12000 字
 // 实打过，确认在 0.4s 内回 400 + max_character_limit_exceeded。
 var MODELS = {
+    // 2026-09-30 官方模型表 / TTS 产品指南：v4 的 HTTP TTS 上限为 10000。
+    eleven_v4: { charLimit: 10000 },
+    // Turbo 使用对话 WebSocket。10000 是插件整段回调的本地上限，非官方会话上限。
+    eleven_v4_turbo: { charLimit: 10000, transport: "dialogueWebSocket", localLimit: true },
     eleven_v3: { charLimit: 5000 },
     // v3 的低延迟版，2026-08-19 GA，2026-09-25 收录。2026-09-25 用 payg Key 从 /v1/models 实测：
     // max_characters_request_free_user = subscribed_user = 5000，与 v3 同档；2 字符合成实打 200。
@@ -40,7 +44,21 @@ var FALLBACK_MODEL = { charLimit: 5000 };
 // null   = 插件用到的语言它全支持（v3 实测 74 种全覆盖，含 af/hy/ceb 等）。
 // []     = 一律不下发 language_code。multilingual_v2 是自动语言识别模型，官方称不读
 //          language_code，下发收益未证实且可能强制语种、误读跨语言文本，保留历史保守行为。
+// v4 家族的官方语言表（2026-09-30）：用 API 的 ISO 639-1 代码；无二字码的保留三字码。
+// v3 的 Irish / Chichewa 不在 v4 公布的名单中，不能直接复用 v3 的 null。
+var V4_LANGUAGES = [
+    "af", "am", "ar", "hy", "as", "ast", "az", "be", "bn", "bs", "bg", "my",
+    "yue", "ca", "ceb", "hr", "cs", "da", "nl", "en", "et", "fil", "fi", "fr",
+    "ff", "gl", "ka", "de", "el", "gu", "ha", "he", "hi", "hu", "is", "id",
+    "it", "ja", "jv", "kam", "kn", "kk", "ko", "ky", "lo", "lv", "ln", "lt",
+    "lg", "lb", "mk", "ms", "ml", "mt", "zh", "mi", "mr", "mn", "ne", "nb",
+    "oc", "or", "ps", "fa", "pl", "pt", "pa", "ro", "ru", "sr", "sn", "sd",
+    "sk", "sl", "so", "ckb", "es", "sw", "sv", "tg", "ta", "te", "th", "tr",
+    "uk", "ur", "uz", "vi", "cy", "wo", "zu"
+];
 var MODEL_LANGUAGES = {
+    eleven_v4: V4_LANGUAGES,
+    eleven_v4_turbo: V4_LANGUAGES,
     eleven_v3: null,
     // 2026-09-25 从 /v1/models 实测：languages 74 种，与 v3 逐一相同（不多不少）；+ zh、+ af
     // （flash_v2_5 必 400 的探针语言）实打均 200。所以与 v3 一样置 null（HANDOFF P1#6）。
@@ -82,8 +100,12 @@ function modelAcceptsLanguage(modelId, code) {
 // 日后变化，门控最坏是漏发一个本可生效的字段（音质微损），不会造成报错。
 //
 // 注意：/v1/models 只暴露 can_use_style 和 can_use_speaker_boost 两个字段，没有
-// speed / similarity_boost / stability 的 per-model 标志，所以这三项一律下发、不门控。
+// speed / similarity_boost / stability 的 per-model 标志。旧模型保留既有下发行为；
+// v4 的 speed 依据新版产品指南单独门控。
 var MODEL_SETTINGS = {
+    // 官方 v4 产品指南：两款仅支持 Stability / Similarity，不支持 Speed / Style。
+    eleven_v4: { style: false, speed: false, use_speaker_boost: false },
+    eleven_v4_turbo: { style: false, speed: false, use_speaker_boost: false },
     eleven_multilingual_v2: { style: true, use_speaker_boost: true },
     eleven_flash_v2_5: { style: false, use_speaker_boost: false },
     eleven_flash_v2: { style: false, use_speaker_boost: false },
@@ -96,8 +118,8 @@ var MODEL_SETTINGS = {
     eleven_turbo_v2: { style: false, use_speaker_boost: false }
 };
 
-// 某模型是否接受该 voice_settings 字段。只有 style / use_speaker_boost 受门控；
-// 其余字段（stability / speed / similarity_boost）无 /v1/models 能力标志，一律放行。
+// 某模型是否接受该 voice_settings 字段。v4 另按官方指南门控 speed；
+// stability / similarity_boost 在所有已支持模型上均可下发。
 // 未知模型或未知字段一律放行，保留用户意图。
 function modelAcceptsSetting(modelId, field) {
     var caps = MODEL_SETTINGS[modelId];
@@ -244,6 +266,19 @@ var langMap = new Map(LANGUAGES.map(function (item) {
     return [item[0], item[1]];
 }));
 
+function languageCodeForModel(modelId, bobLanguage) {
+    var code = langMap.get(bobLanguage);
+    // v4 原生支持粤语及 Norwegian Bokmål（nob / nb）；旧模型保留既有映射。
+    if (modelId === "eleven_v4" || modelId === "eleven_v4_turbo") {
+        if (bobLanguage === "yue") {
+            code = "yue";
+        } else if (bobLanguage === "no" || bobLanguage === "nb") {
+            code = "nb";
+        }
+    }
+    return code && modelAcceptsLanguage(modelId, code) ? code : null;
+}
+
 exports.API_BASE = API_BASE;
 exports.MODELS = MODELS;
 exports.FALLBACK_MODEL = FALLBACK_MODEL;
@@ -255,3 +290,4 @@ exports.MODEL_LANGUAGES = MODEL_LANGUAGES;
 exports.modelAcceptsLanguage = modelAcceptsLanguage;
 exports.MODEL_SETTINGS = MODEL_SETTINGS;
 exports.modelAcceptsSetting = modelAcceptsSetting;
+exports.languageCodeForModel = languageCodeForModel;
