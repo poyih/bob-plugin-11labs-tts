@@ -76,6 +76,7 @@ jobs:
           python3 scripts/release.py \
             --version "$VERSION" \
             --repo "$REPOSITORY" \
+            --entry-output dist/appcast-entry.json \
             --metadata-root "$METADATA_ROOT"
 
       # 先让下载资产真实存在，再把 appcast 暴露给 Bob；若 Release 创建失败，
@@ -86,14 +87,15 @@ jobs:
           files: source/dist/*.bobplugin
           generate_release_notes: true
 
-      - name: 提交 appcast
+      - name: 从最新默认分支发布 appcast（并发更新时重试）
         working-directory: metadata
         env:
-          VERSION: ${{ steps.meta.outputs.version }}
           BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_ROOT: ${{ github.workspace }}/source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appcast.json
-          git diff --cached --quiet || git commit -m "chore: publish appcast v$VERSION"
-          git push origin "HEAD:$BRANCH"
+          python3 "$SOURCE_ROOT/scripts/publish_appcast.py" \
+            --entry-file "$SOURCE_ROOT/dist/appcast-entry.json" \
+            --repo-root . \
+            --branch "$BRANCH"

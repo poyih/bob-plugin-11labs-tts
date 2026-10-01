@@ -32,11 +32,10 @@ import argparse
 import getpass
 import json
 import os
-import socket
 import sys
-import urllib.error
 import urllib.parse
-import urllib.request
+
+import api_client
 
 API_BASE = "https://api.elevenlabs.io/v1"
 PROBE_TEXT = "hi"
@@ -86,32 +85,10 @@ REPLACEMENTS = [
 
 
 def request(method, path, api_key, body=None, timeout=30):
-    """返回 (http_status, parsed_json_or_None, byte_count)。"""
-    url = API_BASE + path
-    data = json.dumps(body).encode() if body is not None else None
-    headers = {"xi-api-key": api_key}
-    if data:
-        headers["Content-Type"] = "application/json"
-
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = resp.read()
-            try:
-                return resp.status, json.loads(payload), len(payload)
-            except (ValueError, UnicodeDecodeError):
-                return resp.status, None, len(payload)      # 音频
-    except urllib.error.HTTPError as err:
-        payload = err.read()
-        try:
-            return err.code, json.loads(payload), len(payload)
-        except (ValueError, UnicodeDecodeError):
-            return err.code, {"_raw": payload[:300].decode("utf-8", "replace")}, len(payload)
-    except urllib.error.URLError as err:
-        return 0, {"_network": str(err.reason)}, 0
-    except (socket.timeout, TimeoutError, OSError) as err:
-        return 0, {"_timeout": str(err)}, 0
-
+    return api_client.request(
+        API_BASE, method, path, api_key, body, timeout,
+        expect_audio=method == "POST" and path.startswith("/text-to-speech/"),
+    )
 
 def api_error(detail):
     """把错误体压成一行，方便排查。两套命名空间（code/status）都带上。"""
@@ -129,7 +106,7 @@ def own_voices(api_key):
     因为若用户已把某个接班音色 add 到 My Voices，这里能直接拿到 ID。
     返回 (音色列表, 请求是否成功)。"""
     status, data, _ = request("GET", "/voices", api_key)
-    if status != 200 or not isinstance(data, dict):
+    if status != 200 or not isinstance(data, dict) or not isinstance(data.get("voices"), list):
         print(f"  ! 读取 /v1/voices 失败（HTTP {status}）：{api_error(data)}", file=sys.stderr)
         return [], False
     return data.get("voices") or [], True
@@ -139,7 +116,7 @@ def search_library(api_key, term, page_size=30):
     """在音色库里按名字搜。返回 (候选列表, 错误串或 None)。"""
     query = urllib.parse.urlencode({"search": term, "page_size": page_size})
     status, data, _ = request("GET", f"/shared-voices?{query}", api_key)
-    if status != 200 or not isinstance(data, dict):
+    if status != 200 or not isinstance(data, dict) or not isinstance(data.get("voices"), list):
         return [], f"HTTP {status} {api_error(data)}"
     return (data.get("voices") or []), None
 
@@ -215,7 +192,7 @@ def probe(api_key, voice_id):
     if 200 <= status < 300 and detail is None and size > 0:
         return True, f"200，{size} bytes 音频"
     if 200 <= status < 300:
-        return False, f"HTTP {status} 返回 JSON 或空响应，并非音频：{api_error(detail)}"
+        return False, f"HTTP {status} 未通过 MP3 音频校验：{api_error(detail)}"
     return False, f"HTTP {status} {api_error(detail)}"
 
 

@@ -162,7 +162,7 @@ def prepare_version(version, info_path=INFO):
     return True
 
 
-def release(version, notes, repo, timestamp, metadata_root=ROOT, root=ROOT):
+def release(version, notes, repo, timestamp, metadata_root=ROOT, root=ROOT, entry_output=None):
     version = normalize_version(version)
     root = pathlib.Path(root).resolve()
     info = read_json(root / "src" / "info.json")
@@ -205,6 +205,9 @@ def release(version, notes, repo, timestamp, metadata_root=ROOT, root=ROOT):
 
     appcast["identifier"] = info["identifier"]
     appcast["versions"] = upsert_version(existing_versions, entry)
+    if entry_output is not None:
+        # 固定记录的哈希、时间戳与下载地址；推送重试时不能从默认分支重建包。
+        write_json_atomic(entry_output, {"identifier": info["identifier"], "entry": entry})
     write_json_atomic(appcast_path, appcast)
 
     print(f"bundle : {bundle.relative_to(root)}")
@@ -241,6 +244,7 @@ def main(argv=None):
         default=str(ROOT),
         help="appcast.json 所在仓库根目录；CI 传默认分支的独立 checkout",
     )
+    parser.add_argument("--entry-output", help="保存固定发布记录，供 publish_appcast.py 合并到最新默认分支")
     args = parser.parse_args(argv)
 
     try:
@@ -253,6 +257,7 @@ def main(argv=None):
             args.repo,
             args.timestamp,
             args.metadata_root,
+            entry_output=args.entry_output,
         )
         return 0
     except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as err:

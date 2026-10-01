@@ -20,10 +20,10 @@ import argparse
 import getpass
 import json
 import os
-import socket
 import sys
-import urllib.error
-import urllib.request
+
+import api_client
+import catalog as model_catalog
 
 API_BASE = "https://api.elevenlabs.io/v1"
 
@@ -48,21 +48,19 @@ class Result:
 
     @property
     def ok(self):
-        return 200 <= self.status < 300 and not (
-            isinstance(self.detail, dict) and "_non_audio" in self.detail
-        )
+        return 200 <= self.status < 300 and not api_client.operational_failure(self.status, self.detail)
 
     @property
     def operational_failure(self):
-        return self.status == 0 or (
-            isinstance(self.detail, dict) and "_non_audio" in self.detail
-        )
+        return api_client.operational_failure(self.status, self.detail)
 
     @property
     def error_detail(self):
         d = self.detail
-        if isinstance(d, dict) and "_non_audio" in d:
-            return d.get("_non_audio")
+        if isinstance(d, dict):
+            for key in ("_non_audio", "_invalid_json"):
+                if key in d:
+                    return d[key]
         return d
 
     @property
@@ -126,34 +124,10 @@ class Result:
 
 
 def request(method, path, api_key, body=None, timeout=60):
-    """返回 (http_status, parsed_json_or_None, raw_byte_count)。"""
-    url = API_BASE + path
-    data = json.dumps(body).encode() if body is not None else None
-    headers = {"xi-api-key": api_key}
-    if data:
-        headers["Content-Type"] = "application/json"
-
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = resp.read()
-            try:
-                return resp.status, json.loads(payload), len(payload)
-            except (ValueError, UnicodeDecodeError):
-                return resp.status, None, len(payload)   # 音频
-    except urllib.error.HTTPError as err:
-        payload = err.read()
-        try:
-            return err.code, json.loads(payload), len(payload)
-        except (ValueError, UnicodeDecodeError):
-            return err.code, {"_raw": payload[:300].decode("utf-8", "replace")}, len(payload)
-    except urllib.error.URLError as err:
-        return 0, {"_network": str(err.reason)}, 0
-    except (socket.timeout, TimeoutError, OSError) as err:
-        # socket.timeout 不是 URLError 的子类，会直接穿透 —— 曾让整个脚本挂在
-        # 超长文本探针上。统一兜底，避免一次超时毁掉整轮结果。
-        return 0, {"_timeout": str(err)}, 0
-
+    return api_client.request(
+        API_BASE, method, path, api_key, body, timeout,
+        expect_audio=method == "POST" and path.startswith("/text-to-speech/"),
+    )
 
 def classify_audio(status, detail, size, note=""):
     """把 2xx JSON/空体标成操作失败，避免探针把它计作音频成功。"""
@@ -161,8 +135,9 @@ def classify_audio(status, detail, size, note=""):
         if detail is None and size > 0:
             note = f"{size} bytes 音频" + (f"，{note}" if note else "")
         else:
-            detail = {"_non_audio": detail}
-            note = f"{size} bytes，但响应为 JSON 或空内容，并非音频"
+            if not isinstance(detail, dict) or "_non_audio" not in detail:
+                detail = {"_non_audio": detail}
+            note = f"{size} bytes，但响应未通过 MP3 音频校验"
     return status, detail, note
 
 
@@ -226,15 +201,16 @@ def probes_status(api_key, voice):
 
 
 def probes_models(api_key, voice):
-    """菜单里的 5 个模型逐个实打，含 2026-09 新增的 v3_conversational（2026-09-25 已真机验过）。"""
-    for model in ("eleven_flash_v2_5", "eleven_flash_v2",
-                  "eleven_multilingual_v2", "eleven_v3",
-                  "eleven_v3_conversational"):
+    """从共同目录取得 HTTP 模型；WebSocket 的 Turbo 在 Bob 内验证。"""
+    catalog = model_catalog.read()
+    for entry in model_catalog.visible_entries(catalog):
+        model = entry["value"]
+        if catalog[model]["transport"] != "http":
+            continue
         s, d, n = tts(api_key, voice, model_id=model)
         yield Result("models", model, s, d, n)
 
-    # v3_conversational 的元数据 2026-09-25 已核对进 config.js（5000 字、can_use_speaker_boost=true、
-    # 语言集与 v3 相同）。这里仍把元数据原样打印并和 v3 比语言集，便于日后复核 config.js 三张表。
+    # 继续打印 v3_conversational 的元数据并与 v3 比语言集，便于复核共同目录。
     # 注意 GET /v1/models 需要 Key 带 models_read 权限，否则 401 missing_permissions。
     name = "v3_conversational /v1/models 元数据"
     status, data, _ = request("GET", "/models", api_key)
@@ -249,13 +225,14 @@ def probes_models(api_key, voice):
     v3_langs = {l.get("language_id")
                 for l in ((by_id.get("eleven_v3") or {}).get("languages") or [])}
     missing = sorted(v3_langs - conv_langs)
-    note = (f"max_chars free/sub={entry.get('max_characters_request_free_user')}/"
+    note = (f"max_chars={entry.get('maximum_text_length_per_request')} "
+            f"legacy free/sub（不再强制执行）={entry.get('max_characters_request_free_user')}/"
             f"{entry.get('max_characters_request_subscribed_user')} "
             f"can_use_style={entry.get('can_use_style')} "
             f"can_use_speaker_boost={entry.get('can_use_speaker_boost')} "
             f"can_do_text_to_speech={entry.get('can_do_text_to_speech')} "
             f"languages={len(conv_langs)} 比 v3 少="
-            + (",".join(missing) if missing else "无（MODEL_LANGUAGES 可保持 null）"))
+            + (",".join(missing) if missing else "无（语言集与 v3 一致）"))
     yield Result("models", name, status, None, note)
 
 
@@ -447,7 +424,7 @@ def main(argv=None):
     operational = [r for r in results if r.operational_failure]
     if operational:
         print(
-            f"其中 {len(operational)} 条为网络/超时或伪音频响应，核验未完整完成。",
+            f"其中 {len(operational)} 条为网络/服务端异常或响应格式错误，核验未完整完成。",
             file=sys.stderr,
         )
         return 1

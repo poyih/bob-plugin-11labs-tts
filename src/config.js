@@ -1,132 +1,33 @@
-// ElevenLabs 服务的静态元信息。
-//
-// info.json 里的模型 / 音色菜单可以用 scripts/sync_catalog.py 从账号拉最新的，
-// 模型能力与接口兼容性在这里维护；API 元数据和官方文档是依据，新增项需单独核验。
-
+// 模型目录同时供运行时与同步工具使用，避免菜单和三张能力表分别维护。
+var catalog = require("./model_catalog.js").MODEL_CATALOG;
 var API_BASE = "https://api.elevenlabs.io/v1";
-
-// 单次请求字符上限。
-// 出处：GET /v1/models 每个模型的 max_characters_request_free_user /
-// max_characters_request_subscribed_user（2026-07-23 真机拉取）。
-// 关键：两个字段对每个模型都相等——同一个上限不区分免费/订阅档，所以这张表不存在
-// 「数字属于哪一档」的歧义，直接照搬即可。multilingual_v2=10000 这一档还用 12000 字
-// 实打过，确认在 0.4s 内回 400 + max_character_limit_exceeded。
-var MODELS = {
-    // 2026-09-30 官方模型表 / TTS 产品指南：v4 的 HTTP TTS 上限为 10000。
-    eleven_v4: { charLimit: 10000 },
-    // Turbo 使用对话 WebSocket。10000 是插件整段回调的本地上限，非官方会话上限。
-    eleven_v4_turbo: { charLimit: 10000, transport: "dialogueWebSocket", localLimit: true },
-    eleven_v3: { charLimit: 5000 },
-    // v3 的低延迟版，2026-08-19 GA，2026-09-25 收录。2026-09-25 用 payg Key 从 /v1/models 实测：
-    // max_characters_request_free_user = subscribed_user = 5000，与 v3 同档；2 字符合成实打 200。
-    // 另：model_rates.character_cost_multiplier=0.5，按字计费是 v3 的一半（HANDOFF P1#6）。
-    eleven_v3_conversational: { charLimit: 5000 },
-    eleven_multilingual_v2: { charLimit: 10000 },
-    eleven_flash_v2_5: { charLimit: 40000 },
-    eleven_flash_v2: { charLimit: 30000, englishOnly: true },
-    // 已被 ElevenLabs 标记为 deprecated，保留只为兼容老配置
-    eleven_turbo_v2_5: { charLimit: 40000 },
-    eleven_turbo_v2: { charLimit: 30000, englishOnly: true }
-};
-
-// 菜单里没有的模型（比如用户手填了新模型 ID）走这套保守默认值
 var FALLBACK_MODEL = { charLimit: 5000 };
+var MODELS = {};
+var MODEL_LANGUAGES = {};
+var MODEL_SETTINGS = {};
 
-// 每个模型「原生支持、可安全下发 language_code」的 ISO 639-1 集合。
-// 出处：GET /v1/models 每个模型的 languages 字段（2026-07-23 真机拉取，逐模型实打复核）。
-//
-// 为什么要按模型按语言门控：实测 ElevenLabs 对「不在该模型支持列表里」的 language_code
-// 直接回 400 unsupported_language，而**不是**文档/旧结论所说的「被忽略」。曾经据此以为
-// 「supportLanguages 返回并集也安全」，其实不然——flash_v2（仅英语）+ zh 必 400，
-// flash_v2_5 + af（Afrikaans）也必 400。所以只能下发模型确实支持的语言，其余留空让模型
-// 自己识别（实测 flash_v2 + 中文不带 language_code 仍能合成出「怪音」，不会报错）。
-//
-// null   = 插件用到的语言它全支持（v3 实测 74 种全覆盖，含 af/hy/ceb 等）。
-// []     = 一律不下发 language_code。multilingual_v2 是自动语言识别模型，官方称不读
-//          language_code，下发收益未证实且可能强制语种、误读跨语言文本，保留历史保守行为。
-// v4 家族的官方语言表（2026-09-30）：用 API 的 ISO 639-1 代码；无二字码的保留三字码。
-// v3 的 Irish / Chichewa 不在 v4 公布的名单中，不能直接复用 v3 的 null。
-var V4_LANGUAGES = [
-    "af", "am", "ar", "hy", "as", "ast", "az", "be", "bn", "bs", "bg", "my",
-    "yue", "ca", "ceb", "hr", "cs", "da", "nl", "en", "et", "fil", "fi", "fr",
-    "ff", "gl", "ka", "de", "el", "gu", "ha", "he", "hi", "hu", "is", "id",
-    "it", "ja", "jv", "kam", "kn", "kk", "ko", "ky", "lo", "lv", "ln", "lt",
-    "lg", "lb", "mk", "ms", "ml", "mt", "zh", "mi", "mr", "mn", "ne", "nb",
-    "oc", "or", "ps", "fa", "pl", "pt", "pa", "ro", "ru", "sr", "sn", "sd",
-    "sk", "sl", "so", "ckb", "es", "sw", "sv", "tg", "ta", "te", "th", "tr",
-    "uk", "ur", "uz", "vi", "cy", "wo", "zu"
-];
-var MODEL_LANGUAGES = {
-    eleven_v4: V4_LANGUAGES,
-    eleven_v4_turbo: V4_LANGUAGES,
-    eleven_v3: null,
-    // 2026-09-25 从 /v1/models 实测：languages 74 种，与 v3 逐一相同（不多不少）；+ zh、+ af
-    // （flash_v2_5 必 400 的探针语言）实打均 200。所以与 v3 一样置 null（HANDOFF P1#6）。
-    eleven_v3_conversational: null,
-    eleven_multilingual_v2: [],
-    eleven_flash_v2_5: [
-        "ar", "bg", "cs", "da", "de", "el", "en", "es", "fi", "fil", "fr", "hi",
-        "hr", "hu", "id", "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ro",
-        "ru", "sk", "sv", "ta", "tr", "uk", "vi", "zh"
-    ],
-    eleven_flash_v2: ["en"],
-    // turbo 已 deprecated，语言集与同名 flash 一致
-    eleven_turbo_v2_5: [
-        "ar", "bg", "cs", "da", "de", "el", "en", "es", "fi", "fil", "fr", "hi",
-        "hr", "hu", "id", "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ro",
-        "ru", "sk", "sv", "ta", "tr", "uk", "vi", "zh"
-    ],
-    eleven_turbo_v2: ["en"]
-};
+Object.keys(catalog).forEach(function (id) {
+    var item = catalog[id];
+    var model = { charLimit: item.charLimit, transport: item.transport };
+    if (item.englishOnly) { model.englishOnly = true; }
+    if (item.localLimit) { model.localLimit = true; }
+    MODELS[id] = model;
+    // Multilingual v2 的自动识别策略不能被 API 返回的语言列表覆盖。
+    MODEL_LANGUAGES[id] = item.sendLanguageCode ? item.languages : [];
+    var settings = {};
+    Object.keys(item.settings).forEach(function (field) { settings[field] = item.settings[field]; });
+    Object.keys(item.settingsOverrides || {}).forEach(function (field) { settings[field] = item.settingsOverrides[field]; });
+    MODEL_SETTINGS[id] = settings;
+});
 
-// 某模型是否应下发该 language_code。未知模型保守不下发（让模型自行识别，绝不触发 400）。
 function modelAcceptsLanguage(modelId, code) {
-    var langs = MODEL_LANGUAGES[modelId];
-    if (langs === undefined) {
-        return false;
-    }
-    if (langs === null) {
-        return true;
-    }
-    return langs.indexOf(code) !== -1;
+    var languages = MODEL_LANGUAGES[modelId];
+    return languages === null || Array.isArray(languages) && languages.indexOf(code) !== -1;
 }
 
-// 各模型对 voice_settings 字段的支持能力。
-// 出处：GET /v1/models 每个模型的 can_use_style / can_use_speaker_boost 布尔标志
-// （2026-07-23 真机拉取；v3_conversational 于 2026-09-25 拉取）。实测 can_use_style 仅
-// multilingual_v2 为 true；can_use_speaker_boost 在 multilingual_v2 和 v3_conversational 为 true；
-// flash_v2_5 / flash_v2 / v3 两项均为 false——传了会被服务端忽略。这里做运行时门控，让请求体
-// 与模型能力一致、日志更干净，也对「个别模型可能改为 400 而非忽略」留一层保险；即便某标志
-// 日后变化，门控最坏是漏发一个本可生效的字段（音质微损），不会造成报错。
-//
-// 注意：/v1/models 只暴露 can_use_style 和 can_use_speaker_boost 两个字段，没有
-// speed / similarity_boost / stability 的 per-model 标志。旧模型保留既有下发行为；
-// v4 的 speed 依据新版产品指南单独门控。
-var MODEL_SETTINGS = {
-    // 官方 v4 产品指南：两款仅支持 Stability / Similarity，不支持 Speed / Style。
-    eleven_v4: { style: false, speed: false, use_speaker_boost: false },
-    eleven_v4_turbo: { style: false, speed: false, use_speaker_boost: false },
-    eleven_multilingual_v2: { style: true, use_speaker_boost: true },
-    eleven_flash_v2_5: { style: false, use_speaker_boost: false },
-    eleven_flash_v2: { style: false, use_speaker_boost: false },
-    eleven_v3: { style: false, use_speaker_boost: false },
-    // 2026-09-25 从 /v1/models 实测：can_use_style=false、can_use_speaker_boost=true——与 v3 不同，
-    // speaker_boost 在它身上是生效的，所以要下发；style 仍不发（HANDOFF P1#6）。
-    eleven_v3_conversational: { style: false, use_speaker_boost: true },
-    // turbo 已 deprecated，能力与同名 flash 一致
-    eleven_turbo_v2_5: { style: false, use_speaker_boost: false },
-    eleven_turbo_v2: { style: false, use_speaker_boost: false }
-};
-
-// 某模型是否接受该 voice_settings 字段。v4 另按官方指南门控 speed；
-// stability / similarity_boost 在所有已支持模型上均可下发。
-// 未知模型或未知字段一律放行，保留用户意图。
 function modelAcceptsSetting(modelId, field) {
     var caps = MODEL_SETTINGS[modelId];
-    if (!caps || !(field in caps)) {
-        return true;
-    }
-    return caps[field];
+    return !caps || !(field in caps) ? true : caps[field];
 }
 
 // Bob 语言代码 -> ElevenLabs 的 ISO 639-1 代码。
@@ -267,15 +168,8 @@ var langMap = new Map(LANGUAGES.map(function (item) {
 }));
 
 function languageCodeForModel(modelId, bobLanguage) {
-    var code = langMap.get(bobLanguage);
-    // v4 原生支持粤语及 Norwegian Bokmål（nob / nb）；旧模型保留既有映射。
-    if (modelId === "eleven_v4" || modelId === "eleven_v4_turbo") {
-        if (bobLanguage === "yue") {
-            code = "yue";
-        } else if (bobLanguage === "no" || bobLanguage === "nb") {
-            code = "nb";
-        }
-    }
+    var overrides = catalog[modelId] && catalog[modelId].languageOverrides || {};
+    var code = overrides[bobLanguage] || langMap.get(bobLanguage);
     return code && modelAcceptsLanguage(modelId, code) ? code : null;
 }
 

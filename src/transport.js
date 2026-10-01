@@ -36,7 +36,7 @@ function errorResponse(message) {
     return {
         // 500 仅用于兼容 HTTP 响应形态；不要把它显示成服务器实际返回的 HTTP 状态。
         response: { statusCode: hasHttpStatus ? status : 500, syntheticStatus: !hasHttpStatus },
-        data: { detail: detail }
+        data: { detail: detail, request_id: message.request_id }
     };
 }
 
