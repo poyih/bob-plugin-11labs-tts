@@ -4,7 +4,18 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0.11；新增 v4 系列并精简模型菜单。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。已发布 v1.0.11；当前修复源码 v1.0.12，尚未发布。
+
+### 2026-10-01：审查问题修复
+
+- 空音频配置验证和 v4 接入已在 v1.0.11 解决。本次修复剩余的核验工具、同步和发布流程问题，并保留请求 ID 诊断。
+- `api_client.py` 共用 Content-Type / MP3 首帧结构检查，拒绝 HTML、JSON、空体及截断 MP3。JSON 端点返回 HTML、网络错误和服务端 5xx 会标为核验未完成；MP3 结构通过不等于实际听音验证。
+- `src/model_catalog.js` 是菜单与运行时三张能力表的共同来源；`catalog.py` 同步已登记模型的语言、参数能力和当前 `maximum_text_length_per_request`。官方已将旧 free/subscribed 上限字段标为不再强制执行；旧记录保留作为历史证据，不再作为同步依据。自动识别、v4 参数限制和 Turbo 本地上限等接口策略不会被元数据覆盖。
+- 未核验的新模型只提示待确认接口，不自动加入菜单。`--dry-run` 不修改目录或菜单；两个文件写入中断时恢复原目录。
+- `--sync-voices --replace` 保留全部 19 个接班音色与自定义项，仍有效的默认选择保留；旧默认属于退役音色时改用健康候选。
+- 发布先冻结 tag 产物的 SHA256 / URL / 时间戳，再创建 Release，最后由 `publish_appcast.py` 在最新默认分支的临时 worktree 合并记录。并发推送最多三次；权限或网络错误直接失败。离线真实 Git 测试已覆盖并发新版本、源码变更、调用者草稿、幂等和重试上限。
+- API 错误的附加信息和日志保留请求 ID、两套错误码及真实 HTTP 状态；WebSocket 错误不伪造 HTTP 状态，诊断对象不包含 Key 或朗读正文。
+- 本次验证全程离线：118 项插件检查、16 组同步器测试、23 项工具测试。HTTP 模型探针也读取共同目录，v4 Turbo 的 WebSocket 试音仍在 Bob 内完成。没有用真实 Key 执行目录同步或计费合成。
 
 ### 2026-09-30：菜单精简与试用反馈
 
@@ -34,7 +45,7 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0
 ## 现成的工具
 
 ```bash
-make test                              # 插件离线检查 + sync 12 组 / tools 10 组测试
+make test                              # 插件离线检查 + sync 16 组 / tools 23 组测试
 python3 scripts/verify_api.py          # 拿真实 Key 打 ElevenLabs，6 组探针，约 40~50 credits
 python3 scripts/verify_api.py --dry-run
 python3 scripts/resolve_voices.py --offline   # 官方 19 个接班音色 ID 对照表（不联网、不要 Key）

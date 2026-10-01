@@ -17,10 +17,14 @@ apply_overlay 是展示层规则的唯一入口，过去靠人眼盯。这里把
 """
 
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import pathlib
-import re
+import subprocess
+import tempfile
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location(
@@ -206,14 +210,114 @@ def test_real_info_consistent():
 
 # 12. 菜单里的模型在 config.js 三张能力表里都有登记 ------------------------
 def test_config_tables_cover_menu():
-    src = (ROOT / "src" / "config.js").read_text(encoding="utf-8")
+    tables = runtime_tables(sync.CATALOG_PATH)
     for table in ("MODELS", "MODEL_LANGUAGES", "MODEL_SETTINGS"):
-        block = re.search(r"var %s = \{(.*?)\n\};" % table, src, re.S)
-        keys = set(re.findall(r"^\s*(eleven_[a-z0-9_]+)\s*:", block.group(1), re.M)) if block else set()
-        missing = [mid for mid in sync.MODEL_ORDER if mid not in keys]
-        check(block is not None and not missing,
+        missing = [mid for mid in sync.MODEL_ORDER if mid not in tables[table]]
+        check(not missing,
               f"config.js {table} 登记了菜单里的全部模型"
               + (f"（缺 {', '.join(missing)}）" if missing else ""))
+
+
+def runtime_tables(catalog_path):
+    jsc = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc"
+    code = ('globalThis.exports={};load(' + json.dumps(str(catalog_path)) + ');var c=exports;'
+            'globalThis.require=function(){return c;};globalThis.exports={};load("src/config.js");'
+            'print(JSON.stringify({MODELS:exports.MODELS,MODEL_LANGUAGES:exports.MODEL_LANGUAGES,MODEL_SETTINGS:exports.MODEL_SETTINGS}));')
+    return json.loads(subprocess.run([jsc, "-e", code], cwd=ROOT, check=True, capture_output=True, text=True).stdout)
+
+
+def test_metadata_refresh_reaches_runtime_and_keeps_policies():
+    original = sync.model_catalog.read()
+    updated, unknown = sync.model_catalog.refresh(original, [
+        {"model_id": "eleven_flash_v2_5", "maximum_text_length_per_request": 12000,
+         "max_characters_request_free_user": 1, "max_characters_request_subscribed_user": 2,
+         "languages": [{"language_id": "zh"}, {"language_id": "en"}], "can_use_style": False, "can_use_speaker_boost": True},
+        {"model_id": "eleven_multilingual_v2", "languages": [{"language_id": "zh"}]},
+        {"model_id": "eleven_v4_turbo", "maximum_text_length_per_request": 99999, "can_use_style": True, "can_use_speaker_boost": True},
+        {"model_id": "eleven_future", "can_do_text_to_speech": True},
+    ])
+    check(unknown == ["eleven_future"] and "eleven_future" not in updated, "未知模型先报告待核验，不进入目录或菜单")
+    check(original["eleven_flash_v2_5"]["charLimit"] == 40000, "元数据转换不修改输入目录")
+    with tempfile.TemporaryDirectory() as temp:
+        path = pathlib.Path(temp) / "models.js"
+        path.write_text(sync.model_catalog.render(updated))
+        tables = runtime_tables(path)
+    check(tables["MODELS"]["eleven_flash_v2_5"]["charLimit"] == 12000,
+          "运行时使用同步的新上限，不使用已弃用的 free/subscribed 字段")
+    check(tables["MODEL_LANGUAGES"]["eleven_flash_v2_5"] == ["en", "zh"] and
+          tables["MODEL_SETTINGS"]["eleven_flash_v2_5"]["use_speaker_boost"] is True,
+          "同步的语言和参数能力实际进入运行时")
+    check(tables["MODEL_LANGUAGES"]["eleven_multilingual_v2"] == [] and
+          tables["MODEL_SETTINGS"]["eleven_v4_turbo"]["style"] is False and
+          tables["MODELS"]["eleven_v4_turbo"]["charLimit"] == 10000,
+          "API 元数据更新不覆盖自动识别、v4 参数及 Turbo 本地上限策略")
+
+
+def test_models_sync_dry_run_and_atomic_failure():
+    with tempfile.TemporaryDirectory() as temp:
+        info_path = pathlib.Path(temp) / "info.json"
+        catalog_path = pathlib.Path(temp) / "models.js"
+        info_path.write_bytes(sync.INFO.read_bytes())
+        catalog_path.write_bytes(sync.CATALOG_PATH.read_bytes())
+        original_info, original_catalog = info_path.read_bytes(), catalog_path.read_bytes()
+        upstream = [{"model_id": "eleven_v3", "maximum_text_length_per_request": 6000}]
+        with patch.object(sync, "INFO", info_path), patch.object(sync, "CATALOG_PATH", catalog_path), \
+             patch.object(sync, "api_get", return_value=upstream), patch.dict(sync.os.environ, {"ELEVENLABS_API_KEY": "test-key"}), \
+             contextlib.redirect_stdout(io.StringIO()):
+            sync.main(["--models-only", "--dry-run"])
+            check(info_path.read_bytes() == original_info and catalog_path.read_bytes() == original_catalog,
+                  "dry-run 不写入菜单或模型能力目录")
+            original_writer = sync.model_catalog.write_text_atomic
+            def fail_info(path, text):
+                if pathlib.Path(path) == info_path:
+                    raise OSError("simulated info write failure")
+                return original_writer(path, text)
+            info = json.loads(info_path.read_text())
+            info["summary"] = "changed"
+            updated, _ = sync.model_catalog.refresh(sync.model_catalog.read(catalog_path), upstream)
+            with patch.object(sync.model_catalog, "write_text_atomic", side_effect=fail_info):
+                try:
+                    sync.write_catalog_and_info(updated, info)
+                    check(False, "第二个文件失败应报告错误")
+                except OSError:
+                    pass
+            check(info_path.read_bytes() == original_info and catalog_path.read_bytes() == original_catalog,
+                  "菜单写入失败会恢复能力目录，不留下两个版本")
+            sync.main(["--models-only"])
+        check(sync.model_catalog.read(catalog_path)["eleven_v3"]["charLimit"] == 6000,
+              "实际同步持久化能力目录，即使模型菜单没有变化")
+        ids = [e["value"] for e in sync.option_by_id(json.loads(info_path.read_text()), "model")["menuValues"]]
+        check(ids == sync.MODEL_ORDER, "元数据响应缺少其他模型时保留已核验菜单")
+
+
+def test_replace_voices_protects_presets_and_default():
+    info = json.loads(sync.INFO.read_text())
+    option = sync.option_by_id(info, "voice")
+    protected = [{"title": title, "value": vid} for vid, title in sync.SUCCESSOR_VOICES]
+    fresh = [{"title": "Sarah", "value": "EXAVITQu4vr4xnSDxMaL"}, {"title": "Own", "value": "ownVoice"}]
+    option["menuValues"], _, stale = sync.merge(option, fresh, True, CUSTOM, protected)
+    sync.apply_overlay(info)
+    sync.repair_defaults(info)
+    ids = [e["value"] for e in option["menuValues"]]
+    check(set(sync.SUCCESSOR_TITLES).issubset(ids) and ids[-1] == CUSTOM, "整体替换后保留全部 19 个接班音色和自定义项")
+    check(option["defaultValue"] == "WQP7cQUF5aAS6Axh5yaa" and not stale, "默认接班音色不被退役音色替换，预设不误报账户已删除")
+    check("ownVoice" in ids and len(ids) == len(set(ids)), "账户音色可加入且菜单无重复")
+    damaged = _info(["eleven_flash_v2_5"], ["EXAVITQu4vr4xnSDxMaL", CUSTOM])
+    voice = sync.option_by_id(damaged, "voice")
+    voice["menuValues"], _, _ = sync.merge(voice, fresh, True, CUSTOM, protected)
+    sync.repair_defaults(damaged)
+    check(voice["defaultValue"] in sync.SUCCESSOR_TITLES, "旧默认值属于退役音色时修到接班音色")
+
+
+def test_invalid_metadata_does_not_rewrite_catalog():
+    original = sync.model_catalog.read()
+    for fields in ({"maximum_text_length_per_request": True}, {"can_use_style": "false"}, {"languages": [{}]}):
+        try:
+            sync.model_catalog.refresh(original, [{"model_id": "eleven_v3", **fields}])
+            check(False, "非法 API 元数据应拒绝")
+        except ValueError:
+            pass
+    check(original == sync.model_catalog.read(), "非法 API 元数据不会修改原目录")
 
 
 def run():
@@ -230,6 +334,10 @@ def run():
         test_missing_default_repaired,
         test_real_info_consistent,
         test_config_tables_cover_menu,
+        test_metadata_refresh_reaches_runtime_and_keeps_policies,
+        test_models_sync_dry_run_and_atomic_failure,
+        test_replace_voices_protects_presets_and_default,
+        test_invalid_metadata_does_not_rewrite_catalog,
     ]
     for t in tests:
         print(f"── {t.__name__}")

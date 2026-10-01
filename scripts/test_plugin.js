@@ -223,10 +223,13 @@ globalThis.$websocket = {
 // ------------------------------------------------------------ 加载插件
 
 globalThis.exports = {};
-load("src/config.js");
-var configModule = globalThis.exports;
+load("src/model_catalog.js");
+var catalogModule = globalThis.exports;
 
 globalThis.require = function (path) {
+    if (path === "./model_catalog.js") {
+        return catalogModule;
+    }
     if (path === "./config.js" || path === "config.js") {
         return configModule;
     }
@@ -235,6 +238,10 @@ globalThis.require = function (path) {
     }
     throw new Error("未知模块: " + path);
 };
+
+globalThis.exports = {};
+load("src/config.js");
+var configModule = globalThis.exports;
 
 globalThis.exports = {};
 load("src/transport.js");
@@ -861,6 +868,28 @@ var EN = { text: "hello world", lang: "en" };
         sockets[socketStart + 1].sent[0].voices[0] === "voiceB", "并行 Turbo 请求保持参数和音频隔离");
     ok(!timers[timerStart].active && !timers[timerStart + 1].active,
         "并行 Turbo 请求各自清理定时器");
+
+    // 33. 错误诊断保留两套命名空间及请求 ID，不包含 Key 或朗读正文。
+    withOptions({});
+    nextResponse = jsonResponse(403, { detail: { code: "subscription_required", status: "output_format_not_allowed",
+        request_id: "req_body", message: "needs Creator" } });
+    nextResponse.response.headers["Request-ID"] = "req_header";
+    logs = [];
+    r = await speak(EN);
+    ok(r.error.addition.request_id === "req_body" && r.error.addition.api_code === "subscription_required" &&
+        r.error.addition.api_status === "output_format_not_allowed" && r.error.addition.http_status === 403,
+        "API 错误附加信息保留请求 ID、code、status 和 HTTP 状态");
+    ok(loggedLine("request_id=req_body") && JSON.stringify(r.error.addition).indexOf("sk_test") < 0 &&
+        JSON.stringify(r.error.addition).indexOf(EN.text) < 0, "请求 ID 可从日志排查，诊断对象不包含 Key 或正文");
+    nextResponse = jsonResponse(401, { detail: { code: "invalid_api_key", message: "bad key" } });
+    nextResponse.response.headers["X-Request-ID"] = "req_fallback";
+    v = await validate();
+    ok(v.error.addition.request_id === "req_fallback", "配置验证也能从大小写混合的响应头取得请求 ID");
+    withOptions({ model: "eleven_v4_turbo" });
+    nextSocketEvents = [{ type: "message", value: { error: "insufficient_permissions", message: "no scope", request_id: "req_ws" } }];
+    r = await speak(EN);
+    ok(r.error.addition.request_id === "req_ws" && r.error.addition.http_status === undefined,
+        "Turbo 协议错误保留请求 ID，并不伪造 HTTP 诊断状态");
 
     print("");
     if (failures.length === 0) {

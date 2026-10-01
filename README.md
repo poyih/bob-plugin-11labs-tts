@@ -4,6 +4,8 @@
 
 **v1.0.11 支持 Eleven v4 与 v4 Turbo。** 在模型菜单中选择即可。v4 使用 HTTP 合成，v4 Turbo 使用官方对话 WebSocket 协议；插件收齐音频后交给 Bob 播放。菜单已隐藏 Flash v2，保留 Flash v2.5、Multilingual v2、v4、v4 Turbo、v3 和 v3 Conversational。
 
+**v1.0.12 修复版（待发布）**：核验工具检查 MP3 结构；模型菜单与能力表共用目录；同步账户音色时保护内置预设；发布 appcast 时处理默认分支的并发更新；错误诊断保留请求 ID。
+
 > v1.0.6 起，音色菜单已换成 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的 **19 个接班音色**，可长期使用。老音色仍能用到年底：若你此前选过，Bob 会保留旧配置继续发送，插件会在日志里提示到期与对应的接班音色。
 
 ## 特点
@@ -71,15 +73,17 @@ make install  # 打包并交给 Bob 安装
 make sync
 ```
 
-默认只补新增、保留已有标题；`make sync REPLACE=1` 用 API 返回的内容整体重写。
+模型菜单及能力的共同数据源是 `src/model_catalog.js`。同步会更新已登记模型的字符上限、语言和参数能力，保留中文标题及接口策略；未登记的新模型会提示待核验，确认接口后再加入目录。字符上限使用官方当前的 `maximum_text_length_per_request`，不再依赖已弃用的 free/subscribed 字段。
 
-同步之后会自动套一遍**展示层规则**（定义在 `scripts/sync_catalog.py` 顶部）：
+账户音色仍需显式开启：`make sync SYNC_ARGS="--sync-voices"`。`make sync REPLACE=1 SYNC_ARGS="--sync-voices"` 会替换账户音色，同时保留 19 个内置接班音色、自定义项和仍有效的默认值。`--dry-run` 不写入模型目录或菜单。
+
+同步之后会自动套一遍**展示层规则**（模型规则来自共同目录，音色规则定义在 `scripts/sync_catalog.py`）：
 
 - 过滤 ElevenLabs 已标记 deprecated 的模型 —— `/v1/models` 仍会返回它们，不过滤就会被带回菜单
 - 隐藏 Flash v2，同步时也不会重新加入菜单；Bob 已保存的 Flash v2 配置仍可合成，切换模型需在设置中重新选择
 - 用中文短标题覆盖 API 的长英文描述
 - 给退役名单上的音色加「2026-12-31 停用」标注，保留既有人工顺序，并保证自定义项在末尾
-- 校验 `defaultValue` 还在菜单里；`__custom__` 是合法默认值，不会被误重置
+- 校验 `defaultValue` 还在菜单里且不会落到退役音色；`__custom__` 是合法默认值，不会被误重置
 
 只想重新套规则而不联网：
 
@@ -121,6 +125,8 @@ git tag v1.0.8 && git push origin v1.0.8
 
 GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。
 
+发布器先保存本次 tag 构建的固定版本记录，再上传 Release 安装包。appcast 发布器从最新默认分支创建临时 worktree，只合并该版本记录；并发提交导致推送被拒时最多尝试三次。调用者的暂存区和未提交文件不参与提交，也不会在重试时从默认分支重新构建安装包。
+
 > 如果你的 GitHub 用户名不是 `poyih`，需要改三处：`src/info.json` 的 `homepage` / `appcast`、`scripts/release.py` 的 `--repo` 默认值。
 
 ## 结构
@@ -130,13 +136,17 @@ src/
   info.json   插件元信息与设置项
   main.js     tts / pluginValidate / supportLanguages
   config.js   API 地址、各模型字符上限与 language_code 支持、Bob↔ISO 语言映射
+  model_catalog.js 模型目录（菜单、能力、接口与兼容策略）
   transport.js HTTP 与 v4 Turbo 对话 WebSocket，音频分块拼接与连接清理
   icon.png    插件图标
 scripts/
   test_plugin.js    jsc 测试（桩掉 $http / $data / $option）
   test_sync.py      同步器展示层与默认值测试
   test_tools.py     发布器与 API 核验工具测试
+  api_client.py     核验工具的共用 HTTP 与 MP3 响应校验
+  catalog.py        模型目录读取、元数据更新和写入验证
   release.py        准备版本 → 从 tag 确定性打包 → 更新 appcast
+  publish_appcast.py 从最新默认分支合并固定发布记录，并发推送时重试
   sync_catalog.py   从 ElevenLabs 同步模型/音色到 info.json
   verify_api.py     拿真实 Key 实测 API 行为，核实文档说法
   resolve_voices.py 官方 19 个接班音色 ID + 本账号可用性核对（--offline 免联网）

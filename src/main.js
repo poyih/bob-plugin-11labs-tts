@@ -84,6 +84,7 @@ function parseApiError(body) {
         return result;
     }
 
+    result.requestId = obj.request_id || "";
     var detail = obj.detail;
     if (typeof detail === "string") {
         result.message = detail;
@@ -105,7 +106,7 @@ function parseApiError(body) {
         result.code = detail.code || "";
         result.status = detail.status || "";
         result.kind = detail.type || "";
-        result.requestId = detail.request_id || "";
+        result.requestId = detail.request_id || result.requestId;
         result.message = detail.message || "";
     }
 
@@ -276,7 +277,21 @@ function toServiceError(statusCode, body) {
 }
 
 function responseError(resp) {
-    return toServiceError(resp.response.syntheticStatus ? 0 : resp.response.statusCode, resp.data);
+    var parsed = parseApiError(resp.data);
+    var error = toServiceError(resp.response.syntheticStatus ? 0 : resp.response.statusCode, resp.data);
+    var requestId = trimmed(parsed.requestId) || responseHeader(resp.response, "request-id") ||
+        responseHeader(resp.response, "x-request-id");
+    var addition = {};
+    if (requestId) { addition.request_id = requestId; }
+    if (parsed.code) { addition.api_code = parsed.code; }
+    if (parsed.status) { addition.api_status = parsed.status; }
+    if (parsed.kind) { addition.api_type = parsed.kind; }
+    if (!resp.response.syntheticStatus) { addition.http_status = resp.response.statusCode; }
+    if (Object.keys(addition).length) { error.addition = addition; }
+    if (requestId) {
+        logInfo("request_id=" + requestId + " api_code=" + (parsed.code || "-") + " api_status=" + (parsed.status || "-"));
+    }
+    return error;
 }
 
 function modelInfo(modelId) {
@@ -299,6 +314,19 @@ function ensureLinkVisible(err) {
     return err;
 }
 
+function responseHeader(response, name) {
+    var headers = response && response.headers || {};
+    var result = "";
+    Object.keys(headers).some(function (key) {
+        if (key.toLowerCase() === name) {
+            result = trimmed(headers[key]);
+            return true;
+        }
+        return false;
+    });
+    return result;
+}
+
 function responseMimeType(response) {
     if (!response) {
         return "";
@@ -307,16 +335,7 @@ function responseMimeType(response) {
     if (direct) {
         return direct.toLowerCase().split(";")[0];
     }
-    var headers = response.headers || {};
-    var found = "";
-    Object.keys(headers).some(function (key) {
-        if (String(key).toLowerCase() === "content-type") {
-            found = trimmed(headers[key]).toLowerCase().split(";")[0];
-            return true;
-        }
-        return false;
-    });
-    return found;
+    return responseHeader(response, "content-type").toLowerCase().split(";")[0];
 }
 
 function isAudioMime(mimeType) {
