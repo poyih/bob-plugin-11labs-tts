@@ -187,26 +187,35 @@ globalThis.$websocket = {
             listenReceiveString: function (f) { handlers.message = f; },
             listenReceiveData: function (f) { handlers.data = f; },
             sendString: function (s) { this.sent.push(JSON.parse(s)); },
-            close: function () {
+            handlers: handlers,
+            close: function (arg) {
+                // 还原 Bob 1.21.0 JSWebSocket.close(value) 直接读取 value["code"] 的行为：
+                // 若不传对象会直接抛出 TypeError: undefined is not an object。
+                this.closeCode = arg["code"];
+                this.closeArg = arg;
                 this.closed = true;
-                handlers.close(this, 1000, "client closed");
+                if (handlers.close) {
+                    handlers.close(this, 1000, "client closed");
+                }
             },
             open: function () {
                 var self = this;
                 var timer = timers[timers.length - 1];
                 Promise.resolve().then(function () {
-                    handlers.open(self);
+                    if (handlers.open) {
+                        handlers.open(self);
+                    }
                     events.forEach(function (event) {
-                        if (event.type === "message") {
+                        if (event.type === "message" && handlers.message) {
                             handlers.message(self, typeof event.value === "string"
                                 ? event.value : JSON.stringify(event.value));
-                        } else if (event.type === "data") {
+                        } else if (event.type === "data" && handlers.data) {
                             handlers.data(self, $data.fromUTF8(JSON.stringify(event.value)));
-                        } else if (event.type === "close") {
+                        } else if (event.type === "close" && handlers.close) {
                             handlers.close(self, event.code, "server closed");
-                        } else if (event.type === "error") {
+                        } else if (event.type === "error" && handlers.error) {
                             handlers.error(self, event.value);
-                        } else if (event.type === "bad-data") {
+                        } else if (event.type === "bad-data" && handlers.data) {
                             handlers.data(self, { toUTF8: function () { throw null; } });
                         } else if (event.type === "timeout" && timer.active) {
                             timer.options.handler();
@@ -736,6 +745,18 @@ var EN = { text: "hello world", lang: "en" };
     ok(lastRequest.body.language_code === "nb", "v4 对 Bob 的 no 别名也使用 Bokmål 代码");
     await speak({ text: "hello", lang: "ga" });
     ok(lastRequest.body.language_code === undefined, "v4 不下发官方名单外的 Irish 语言代码");
+    ok(langs.indexOf("my") >= 0 && langs.indexOf("uz") >= 0 && langs.indexOf("fuv") >= 0,
+        "supportLanguages 覆盖 v4 新增的 Bob 语言代码");
+    await speak({ text: "မင်္ဂလာပါ", lang: "my" });
+    ok(lastRequest.body.language_code === "my", "v4 缅甸语下发 language_code=my");
+    await speak({ text: "salom", lang: "fuv" });
+    ok(lastRequest.body.language_code === "ff", "v4 富拉语 Bob 别名 fuv 映射为 ff");
+    withOptions({ model: "eleven_v3" });
+    await speak({ text: "မင်္ဂလာပါ", lang: "my" });
+    ok(lastRequest.body.language_code === undefined, "v3 不下发 v4 独有的缅甸语代码，避免 400");
+    withOptions({ model: "eleven_v3_conversational" });
+    await speak({ text: "salom", lang: "uz" });
+    ok(lastRequest.body.language_code === undefined, "v3 Conversational 不下发 v4 独有的乌兹别克语代码");
     withOptions({});
     await speak({ text: "你好", lang: "yue" });
     ok(lastRequest.body.language_code === "zh", "旧模型保持粤语映射兼容行为");
@@ -785,6 +806,11 @@ var EN = { text: "hello world", lang: "en" };
         ws.sent[2].close_socket === true, "Turbo 发送原文并用 close_socket flush 短文本");
     ok(ws.closed && !timers[timers.length - 1].active && ws.options.timeoutInterval === 50,
         "Turbo 成功后关闭连接、取消定时器，超时早于宿主");
+    ok(ws.closeArg && typeof ws.closeArg === "object" &&
+        ws.handlers.open === null && ws.handlers.message === null &&
+        ws.handlers.data === null && ws.handlers.error === null &&
+        ws.handlers.close === null && transportModule.activeSocketCount() === 0,
+        "Turbo 关闭连接时传空对象、清空全部监听并释放活动连接引用");
     ok(r.result.raw.model_id === "eleven_v4_turbo", "Turbo 结果元数据保留实际模型");
 
     withOptions({ model: "eleven_v4_turbo" });

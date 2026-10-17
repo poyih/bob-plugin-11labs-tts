@@ -3,6 +3,31 @@
 // HTTP 与 WebSocket 均返回 Bob 的 response/data/rawData 形态，供 main.js 统一校验。
 var config = require("./config.js");
 
+// 进行中的连接：由模块级数组持有引用，避免合成途中 socket 或监听闭包被 JSC 回收。
+var activeSockets = [];
+
+function forgetSocket(socket) {
+    for (var i = activeSockets.length - 1; i >= 0; i--) {
+        if (activeSockets[i] === socket) {
+            activeSockets.splice(i, 1);
+        }
+    }
+}
+
+function detachListeners(socket) {
+    [
+        "listenOpen",
+        "listenReceiveString",
+        "listenReceiveData",
+        "listenError",
+        "listenClose"
+    ].forEach(function (name) {
+        if (typeof socket[name] === "function") {
+            try { socket[name](null); } catch (ignored) {}
+        }
+    });
+}
+
 function messageOf(error) {
     return error && error.message ? error.message : String(error);
 }
@@ -56,7 +81,15 @@ function requestDialogue(params) {
                 try { $timer.invalidate(timerId); } catch (ignored) {}
             }
             if (socket) {
-                try { socket.close(); } catch (ignored) {}
+                var closingSocket = socket;
+                socket = null;
+                // 先清空监听器再关闭：避免 Starscream 异步派发 cancelled 时 JSContext 已销毁，
+                // 报 websocket listener has been collected。
+                detachListeners(closingSocket);
+                // Bob 1.21.0 的 JSWebSocket.close(value) 会直接取 value["code"]，
+                // 不传对象会在原生层触发 TypeError 未捕获异常。
+                try { closingSocket.close({}); } catch (ignored) {}
+                forgetSocket(closingSocket);
             }
             if (error) {
                 reject(error);
@@ -127,6 +160,7 @@ function requestDialogue(params) {
                 header: { "xi-api-key": params.apiKey },
                 timeoutInterval: params.timeout
             });
+            activeSockets.push(socket);
             socket.listenOpen(function () {
                 if (settled) {
                     return;
@@ -176,3 +210,4 @@ function requestDialogue(params) {
 }
 
 exports.request = request;
+exports.activeSocketCount = function () { return activeSockets.length; };

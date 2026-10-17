@@ -30,12 +30,13 @@ function modelAcceptsSetting(modelId, field) {
     return !caps || !(field in caps) ? true : caps[field];
 }
 
-// Bob 语言代码 -> ElevenLabs 的 ISO 639-1 代码。
+// Bob 语言代码 -> ElevenLabs 的语言代码（ISO 639-1，无二字码时用 ISO 639-3）。
 // tier 表示「最低要哪一档模型才原生支持」：
-//   v2    - multilingual_v2 / flash_v2_5 / v3 都支持
-//   flash - flash_v2_5 及以上
-//   v3    - v3 / v3 Conversational
-// tier 目前只用于文档说明，运行时不会因此拒绝合成（模型不支持时只是口音不准，不该报错）。
+//   v2    - multilingual_v2 / flash_v2_5 / v3 / v4 都支持
+//   flash - flash_v2_5 / v3 / v4
+//   v3    - v3 / v3 Conversational（其中 ga / ny 仅 v3，其余 v4 也支持）
+//   v4    - v4 / v4 Turbo
+// tier 只用于说明，运行时按 model_catalog.js 的逐模型语言集决定是否下发 language_code。
 var LANGUAGES = [
     ["zh-Hans", "zh", "v2"],
     ["zh-Hant", "zh", "v2"],
@@ -120,7 +121,26 @@ var LANGUAGES = [
     ["te", "te", "v3"],
     ["th", "th", "v3"],
     ["ur", "ur", "v3"],
-    ["cy", "cy", "v3"]
+    ["cy", "cy", "v3"],
+    ["am", "am", "v4"],
+    ["ast", "ast", "v4"],
+    ["ckb", "ckb", "v4"],
+    ["ff", "ff", "v4"],
+    ["fuv", "ff", "v4"],
+    ["kam", "kam", "v4"],
+    ["lg", "lg", "v4"],
+    ["lo", "lo", "v4"],
+    ["mi", "mi", "v4"],
+    ["mn", "mn", "v4"],
+    ["mt", "mt", "v4"],
+    ["my", "my", "v4"],
+    ["oc", "oc", "v4"],
+    ["or", "or", "v4"],
+    ["sn", "sn", "v4"],
+    ["tg", "tg", "v4"],
+    ["uz", "uz", "v4"],
+    ["wo", "wo", "v4"],
+    ["zu", "zu", "v4"]
 ];
 
 // 已被 ElevenLabs 完全弃用的 Legacy 音色。官方原文：「Legacy voice IDs will

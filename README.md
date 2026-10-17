@@ -6,6 +6,8 @@
 
 **v1.0.12 修复版**：核验工具检查 MP3 结构；模型菜单与能力表共用目录；同步账户音色时保护内置预设；发布 appcast 时处理默认分支的并发更新；错误诊断保留请求 ID。
 
+**v1.0.13 修复版**：修复 v4 Turbo 关闭 WebSocket 时触发的 Bob 原生层异常，补齐 v4 新增的 19 项 Bob 语言映射并显式化 v3 语言表。
+
 > v1.0.6 起，音色菜单已换成 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的 **19 个接班音色**，可长期使用。老音色仍能用到年底：若你此前选过，Bob 会保留旧配置继续发送，插件会在日志里提示到期与对应的接班音色。
 
 ## 特点
@@ -20,7 +22,7 @@
 
 **v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
-**84 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+**103 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
 **可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 测插件运行时、同步器、发布器和 API 核验工具，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 

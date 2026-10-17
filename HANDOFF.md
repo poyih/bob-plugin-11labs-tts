@@ -4,7 +4,13 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0.12，包含 v4 系列接入、目录同步与发布流程修复。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0.13，包含 v4 系列接入、目录同步、发布流程及 WebSocket 收尾修复。
+
+### 2026-10-17：WebSocket 关闭异常修复与 v4 语言表补齐
+
+- **修复 `v4 Turbo` WebSocket 收尾时的两条 Bob 原生层报错**：本机 Bob 日志（`2026-09-30 22:29:35`～`22:30:41`）在每次 `eleven_v4_turbo` 验证或朗读结束时记录了 `TypeError: undefined is not an object (evaluating 'socket.close()')` 与 `websocket listener has been collected`。对照 Bob 1.21.0 二进制 `JSAPIWebSocket.swift` 反汇编确认：`JSWebSocket.close(_ value: JSValue)` 在 `readyState` 为 0/1 时直接访问 `value["code"]`，不传参会在原生侧触发 `JSContext.exceptionHandler`；关闭后 Starscream 异步派发 `.cancelled` 时若临时 `JSContext` 已销毁且监听槽未清空，则报 listener collected。`src/transport.js` 现改为模块级 `activeSockets` 保活、收尾先将 5 个 `listen*` 置 `null` 再调 `socket.close({})`。
+- **补齐 `v4` 新增语种并显式化 `v3` 语言表**：`src/config.js` 的 `LANGUAGES` 从 84 项扩充到 103 项（补齐 `am`、`ast`、`ckb`、`ff`/`fuv`、`kam`、`lg`、`lo`、`mi`、`mn`、`mt`、`my`、`oc`、`or`、`sn`、`tg`、`uz`、`wo`、`zu`），使 `supportLanguages()` 覆盖全部 91 种 v4 语言与 74 种 v3 语言；同时将 `src/model_catalog.js` 中 `eleven_v3` / `eleven_v3_conversational` 的 `languages` 从 `null` 改为显式 74 语言列表，防止 `v3` 对 `v4` 独有语种误下发 `language_code` 触发 400。
+- **补记本机真机日志核验结果**：本机 Bob 日志已实测通过 `eleven_v4`（中/英 HTTP 合成 200，自动丢弃 `style`/`speed`/`use_speaker_boost`）与 `eleven_v4_turbo`（WebSocket 单字符验证 + 中/英流式合成 200，音频正常播放）。
 
 ### 2026-10-01：审查问题修复
 
@@ -19,7 +25,7 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0
 
 ### 2026-09-30：菜单精简与试用反馈
 
-- 用户反馈 v1.0.10 初步试用「没什么问题」。具体模型、语言、账户档位及设置组合未留记录，不能据此把下面所有真机验收项标为完成。
+- 用户反馈 v1.0.10 初步试用「没什么问题」。事后从本机 Bob 日志（`2026-09-30 22:17`～`22:31`、`2026-10-01 21:46`～`21:47`）核对到完整实测记录：音色 `QtY3JBOUKEB5xzrRfOKc`（Maisie）、格式 `mp3_44100_128`、`stability=0.5`，`eleven_v4`（`zh-Hans` / `en` HTTP 200，正确丢弃旧 `style`/`speed`/`use_speaker_boost`）与 `eleven_v4_turbo`（WebSocket 配置验证 + `zh-Hans` 1.4s / `en` 3.9s 合成 200）均真实合成并播放成功。
 - v1.0.11 从菜单移除 Flash v2；v3 / v3 Conversational 暂留作回退。`config.js` 中旧模型的字符上限、语言及设置能力保持兼容，Bob 已保存的旧 ID 仍可使用。
 - `sync_catalog.py` 用独立的 `HIDDEN_MODELS` 过滤 Flash v2，避免以后同步重新带回菜单；这属于菜单策略，不将 Flash v2 标为官方弃用。
 
