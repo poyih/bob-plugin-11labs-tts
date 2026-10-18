@@ -1,5 +1,6 @@
 var config = require("./config.js");
 var transport = require("./transport.js");
+var audio = require("./audio.js");
 
 var LOG_TAG = "[11labs-tts]";
 
@@ -460,6 +461,11 @@ function audioBase64(resp) {
     // Bob 的 $data 不暴露 length，使用 base64 判空。
     if (!encoded) {
         throw { type: "api", message: "ElevenLabs 返回了空音频" };
+    }
+    // 菜单输出均为 MP3；HTTP 与 Turbo 收齐音频后统一检查完整帧，
+    // 防止损坏或截断的数据通过配置验证后交给 Bob 播放。
+    if (!audio.isMP3(encoded)) {
+        throw { type: "api", message: "ElevenLabs 返回的 MP3 音频损坏或不完整，请重试" };
     }
     return encoded;
 }

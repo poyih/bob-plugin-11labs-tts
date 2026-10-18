@@ -16,9 +16,11 @@ lint: ## 检查全部 JS/Python 语法和 JSON 格式
 	@python3 -c 'import json; [print("json ok    "+f) for f in ["src/info.json","appcast.json"] if json.load(open(f)) is not None]'
 
 test: lint test-sync test-tools ## 跑全部离线单测（不联网、不消耗额度）
-	@out=$$($(JSC) scripts/test_plugin.js) ; \
-	 echo "$$out" ; \
-	 echo "$$out" | grep -q '^ALL PASS' || { echo "测试未通过"; exit 1; }
+	@for file in $(sort $(wildcard scripts/test_*.js)); do \
+	 out=$$($(JSC) "$$file") || { echo "$$out"; exit 1; }; \
+	 echo "$$out"; \
+	 echo "$$out" | grep -q '^ALL PASS' || { echo "测试未通过：$$file"; exit 1; }; \
+	 done
 
 test-sync: ## 跑 sync_catalog 展示层规则单测（不联网）
 	@python3 scripts/test_sync.py

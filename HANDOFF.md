@@ -4,7 +4,15 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前版本 v1.0.13，包含 v4 系列接入、目录同步、发布流程及 WebSocket 收尾修复。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版本 v1.0.14，包含 v4 系列接入、目录同步、发布流程、WebSocket 收尾修复与 MP3 结构校验。
+
+### 2026-10-18：音频校验、语言声明与发布依赖维护
+
+- **损坏音频回归**：v1.0.13 在 HTTP 200、`audio/mpeg`、正文仅三字节 `ff ff ff` 时，朗读返回成功且配置验证通过；Turbo 收到同样损坏的分块及 `is_final` 也返回成功。新增 `src/audio.js`，HTTP 与 WebSocket 的朗读、验证入口统一检查 MP3 帧结构。只使用已验证可用的 base64，不依赖 `$data.length` 或新增原生方法。
+- **修正测试音频**：成功响应桩改用完整 MP3 帧，补充 ID3 标签、有效多帧、损坏数据、首尾帧截断及 Turbo 清理连接的回归测试；结构通过不代表完成了解码或听音验证。
+- **Bob 语言声明**：依据 [Bob 官方语言代码表](https://bobtranslate.com/plugin/addition/language.html)，移除未登记的 `ff` / `kam`，将声明数量从 103 修为 101；保留 `fuv → ff` 映射，ElevenLabs 模型能力表中的语言列表保持完整。下方 2026-10-17 的 103 项记录为当时状态，不再代表当前声明。
+- **发布依赖**：CI 与发布工作流升级 `actions/checkout@v7`、`softprops/action-gh-release@v3`。离线验收时用临时仓库和假凭据验证新版 checkout 的 `includeIf` 配置能供 `publish_appcast.py` 创建的临时 worktree 继承，未调用付费合成。
+- **离线验收**：`make pack` 通过 143 项插件检查、82 项音频结构检查、16 组同步测试和 23 项工具测试，生成 v1.0.14 安装包；包内 7 个文件逐字节匹配源码，ZIP CRC 正常。额外用本机 jsc 检查 26.1 MiB / 65536 帧输入，正常数据 31ms 通过、尾部截断 3 bytes 时 16ms 拒绝。该阶段未安装新包做 Bob 真机试听，也未在 GitHub 运行升级后的工作流。
 
 ### 2026-10-17：WebSocket 关闭异常修复与 v4 语言表补齐
 

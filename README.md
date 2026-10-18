@@ -8,11 +8,13 @@
 
 **v1.0.13 修复版**：修复 v4 Turbo 关闭 WebSocket 时触发的 Bob 原生层异常，补齐 v4 新增的 19 项 Bob 语言映射并显式化 v3 语言表。
 
+**v1.0.14 修复版**：朗读与配置验证统一检查 MP3 帧结构，拒绝损坏或截断的音频；修正 Bob 语言声明，并更新 CI 和发布 Action。
+
 > v1.0.6 起，音色菜单已换成 ElevenLabs 官方为 2026-12-31 退役的 Default 音色指定的 **19 个接班音色**，可长期使用。老音色仍能用到年底：若你此前选过，Bob 会保留旧配置继续发送，插件会在日志里提示到期与对应的接班音色。
 
 ## 特点
 
-**错误不会被吞掉。** ElevenLabs 失败时返回的是 JSON，不检查状态码就直接播放，表现是「点了没声音也没报错」。这里把 HTTP 状态码和 `detail.code` / `detail.status` 一起映射成 Bob 的错误类型：额度用完、Key 缺权限、音色不可用、文本超长，各报各的，并带上实际发出的 Voice ID。
+**错误不会被吞掉。** ElevenLabs 失败时返回的是 JSON，不检查状态码就直接播放，表现是「点了没声音也没报错」。这里把 HTTP 状态码和 `detail.code` / `detail.status` 一起映射成 Bob 的错误类型：额度用完、Key 缺权限、音色不可用、文本超长，各报各的，并带上实际发出的 Voice ID。HTTP 和 WebSocket 音频在交给 Bob 前还会检查 MP3 帧结构，拒绝损坏或截断的响应；结构检查不代替解码或听音验证。
 
 **音色列表过期也不影响使用。** 除了内置菜单，还有一个自定义 Voice ID 输入框，优先级更高 —— 克隆音色、Voice Design 生成的音色、菜单里还没有的新音色都能直接填。Legacy 音色不会被客户端一刀切拦截；是否可用由当前账户和 API 权限决定。
 
@@ -22,7 +24,7 @@
 
 **v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
-**103 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+**101 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
 **可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 测插件运行时、同步器、发布器和 API 核验工具，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
@@ -140,9 +142,11 @@ src/
   config.js   API 地址、各模型字符上限与 language_code 支持、Bob↔ISO 语言映射
   model_catalog.js 模型目录（菜单、能力、接口与兼容策略）
   transport.js HTTP 与 v4 Turbo 对话 WebSocket，音频分块拼接与连接清理
+  audio.js    MP3 帧与 ID3 标签结构校验，只读取 base64，不依赖 $data.length
   icon.png    插件图标
 scripts/
   test_plugin.js    jsc 测试（桩掉 $http / $data / $option）
+  test_audio.js     MP3 帧、ID3 标签和截断数据的离线结构测试
   test_sync.py      同步器展示层与默认值测试
   test_tools.py     发布器与 API 核验工具测试
   api_client.py     核验工具的共用 HTTP 与 MP3 响应校验

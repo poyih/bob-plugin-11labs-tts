@@ -24,7 +24,7 @@ jobs:
     steps:
       # source 永远固定到 tag SHA，测试和发布包都从这里产生。
       - name: 检出 tag 源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -32,7 +32,7 @@ jobs:
 
       # metadata 只承载 appcast 的更新，不能拿它来构建 tag 的发布包。
       - name: 检出默认分支元数据
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
@@ -82,7 +82,7 @@ jobs:
       # 先让下载资产真实存在，再把 appcast 暴露给 Bob；若 Release 创建失败，
       # 用户不会拿到一个暂时指向 404 的更新记录。
       - name: 创建 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: source/dist/*.bobplugin
           generate_release_notes: true

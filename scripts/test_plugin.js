@@ -126,8 +126,18 @@ globalThis.$http = {
     }
 };
 
-function audioResponse(statusCode) {
-    var data = makeData([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x11, 0x22]);
+// 合法 ID3v2.4 标签 + 两个完整 MPEG1 Layer III 帧（44.1kHz / 128kbps）。
+// 这里只构造可检查结构的帧，不模拟解码器或听音。
+function mp3Bytes(marker) {
+    var frame = [0xff, 0xfb, 0x90, 0x00];
+    while (frame.length < 417) { frame.push(0); }
+    frame[frame.length - 1] = marker || 0;
+    return [0x49, 0x44, 0x33, 0x04, 0, 0, 0, 0, 0, 12,
+        0x54, 0x49, 0x54, 0x32, 0, 0, 0, 2, 0, 0, 3, 0x78].concat(frame, frame);
+}
+
+function audioResponse(statusCode, bytes) {
+    var data = makeData(bytes === undefined ? mp3Bytes() : bytes);
     return { response: { statusCode: statusCode, headers: { "content-type": "audio/mpeg" } }, data: data, rawData: data };
 }
 
@@ -151,7 +161,7 @@ function textResponse(statusCode, text, mimeType) {
 }
 
 function binaryResponse(statusCode, mimeType) {
-    var data = makeData([0x49, 0x44, 0x33, 0x04]);
+    var data = makeData(mp3Bytes());
     return {
         response: {
             statusCode: statusCode,
@@ -245,6 +255,9 @@ globalThis.require = function (path) {
     if (path === "./transport.js") {
         return transportModule;
     }
+    if (path === "./audio.js") {
+        return audioModule;
+    }
     throw new Error("未知模块: " + path);
 };
 
@@ -255,6 +268,10 @@ var configModule = globalThis.exports;
 globalThis.exports = {};
 load("src/transport.js");
 var transportModule = globalThis.exports;
+
+globalThis.exports = {};
+load("src/audio.js");
+var audioModule = globalThis.exports;
 
 globalThis.exports = {};
 load("src/main.js");
@@ -297,11 +314,12 @@ function validate() {
 }
 
 function socketAudioEvents() {
+    var bytes = mp3Bytes();
     return [
-        { type: "message", value: { audio: "SQ==" } },
+        { type: "message", value: { audio: base64(bytes.slice(0, 1)) } },
         { type: "message", value: { is_final_audio_for_turn: true } },
-        { type: "data", value: { audio: "RDM=" } },
-        { type: "message", value: { audio: "//uQAA==", is_final: true } }
+        { type: "data", value: { audio: base64(bytes.slice(1, 420)) } },
+        { type: "message", value: { audio: base64(bytes.slice(420)), is_final: true } }
     ];
 }
 
@@ -312,6 +330,9 @@ var EN = { text: "hello world", lang: "en" };
     var langs = plugin.supportLanguages();
     ok(Array.isArray(langs) && langs.length > 30, "supportLanguages 返回语言数组");
     ok(langs.indexOf("zh-Hans") >= 0 && langs.indexOf("en") >= 0, "语言列表包含 zh-Hans 与 en");
+    ok(langs.length === 101 && new Set(langs).size === 101 &&
+        langs.indexOf("ff") < 0 && langs.indexOf("kam") < 0 && langs.indexOf("fuv") >= 0,
+        "只声明 101 个 Bob 语言代码，富拉语使用 fuv");
 
     // 2. 缺 API Key
     withOptions({ apiKey: "" });
@@ -485,6 +506,34 @@ var EN = { text: "hello world", lang: "en" };
     r = await speak(EN);
     ok(r.error && r.error.type === "api", "空音频报 api 错误");
 
+    // 17b. MIME 和非空二进制体不足以证明 MP3 完整；验证与朗读共用结构检查。
+    var invalidAudio = [
+        ["损坏 MP3", [0xff, 0xff, 0xff]],
+        ["只有 ID3 标签", [0x49, 0x44, 0x33, 0x04, 0, 0, 0, 0, 0, 0]],
+        ["截断首帧", mp3Bytes().slice(0, 100)],
+        ["截断尾帧", mp3Bytes().slice(0, -1)]
+    ];
+    for (var invalidIndex = 0; invalidIndex < invalidAudio.length; invalidIndex++) {
+        nextResponse = audioResponse(200, invalidAudio[invalidIndex][1]);
+        r = await speak(EN);
+        ok(r.error && r.error.type === "api" && !r.result && r.error.message.indexOf("MP3") >= 0,
+            "HTTP 朗读拒绝" + invalidAudio[invalidIndex][0]);
+        var invalidValidation = await validate();
+        ok(invalidValidation.result === false && invalidValidation.error.type === "api",
+            "HTTP 配置验证拒绝" + invalidAudio[invalidIndex][0]);
+    }
+    nextResponse = audioResponse(200, utf8Bytes('{"detail":{"message":"gateway error"}}'));
+    delete nextResponse.response.headers;
+    r = await speak(EN);
+    ok(r.error && r.error.type === "api" && !r.result,
+        "缺少 MIME 的原始二进制 JSON 不被当作音频");
+    nextResponse = audioResponse(200);
+    delete nextResponse.response.headers;
+    delete nextResponse.data.toByteArray;
+    r = await speak(EN);
+    ok(r.result && r.result.value === base64(mp3Bytes()),
+        "有效 MP3 无 MIME 且 $data 不暴露字节数组时仍可播放");
+
     // 18. 英语专用模型配上非英语
     withOptions({ model: "eleven_flash_v2" });
     nextResponse = audioResponse(200);
@@ -498,7 +547,7 @@ var EN = { text: "hello world", lang: "en" };
     var v = await new Promise(function (resolve) {
         plugin.pluginValidate(resolve);
     });
-    ok(v.result === true, "pluginValidate 在真实 TTS 音频成功时通过");
+    ok(v.result === true, "pluginValidate 在有效 MP3 响应时通过");
     ok(v.error === undefined, "pluginValidate 成功时不夹带 error 字段");
     ok(lastRequest.method === "POST" &&
         lastRequest.url.indexOf("/text-to-speech/WQP7cQUF5aAS6Axh5yaa?") > 0 &&
@@ -774,7 +823,7 @@ var EN = { text: "hello world", lang: "en" };
     nextResponse = jsonResponse(200, { detail: { message: "gateway returned JSON" } });
     delete nextResponse.response.headers;
     v = await validate();
-    ok(v.result === false && v.error.type === "api", "配置验证拒绝缺少 MIME 的 JSON 原始二进制体");
+    ok(v.result === false && v.error.type === "api", "配置验证拒绝缺少 MIME 的已解析 JSON 对象");
 
     var savedNow = Date.now;
     Date.now = function () { return Date.UTC(2027, 0, 1); };
@@ -792,7 +841,7 @@ var EN = { text: "hello world", lang: "en" };
     lastRequest = null;
     r = await speak({ text: "你好", lang: "yue" });
     var ws = sockets[sockets.length - 1];
-    ok(r.result && r.result.value === "SUQz//uQAA==", "Turbo 合并带 padding 的全部音频分块，包含 turn 结束后的尾部");
+    ok(r.result && r.result.value === base64(mp3Bytes()), "Turbo 合并带 padding 的全部音频分块，包含 turn 结束后的尾部");
     ok(lastRequest === null && ws.options.url.indexOf("wss://api.elevenlabs.io/v1/text-to-dialogue/stream-input?") === 0,
         "Turbo 使用对话 WebSocket，不误发 HTTP TTS 请求");
     ok(ws.options.url.indexOf("model_id=eleven_v4_turbo") > 0 &&
@@ -834,6 +883,18 @@ var EN = { text: "hello world", lang: "en" };
     nextSocketEvents = [{ type: "message", value: { is_final: true } }];
     v = await validate();
     ok(v.result === false && v.error.type === "api", "Turbo 无音频 final 不通过配置验证");
+    for (var badSocketIndex = 0; badSocketIndex < invalidAudio.length; badSocketIndex++) {
+        nextSocketEvents = [{ type: "message", value: {
+            audio: base64(invalidAudio[badSocketIndex][1]), is_final: true
+        } }];
+        r = await speak(EN);
+        ok(r.error && r.error.type === "api" && !r.result,
+            "Turbo 朗读拒绝 final 中的" + invalidAudio[badSocketIndex][0]);
+        v = await validate();
+        ok(v.result === false && v.error.type === "api" &&
+            sockets[sockets.length - 1].closed && !timers[timers.length - 1].active,
+            "Turbo 配置验证拒绝" + invalidAudio[badSocketIndex][0] + "并清理连接");
+    }
     nextSocketEvents = [{ type: "message", value: { audio: "SQ==" } }, { type: "close", code: 1006 }];
     r = await speak(EN);
     ok(r.error && r.error.type === "network" && !r.result, "Turbo 提前断开时拒绝部分音频");
@@ -886,10 +947,11 @@ var EN = { text: "hello world", lang: "en" };
     var timerStart = timers.length;
     var speakingA = speak({ text: "A", lang: "en" });
     withOptions({ model: "eleven_v4_turbo", customVoiceId: "voiceB" });
-    nextSocketEvents = [{ type: "message", value: { audio: "Qg==", is_final: true } }];
+    nextSocketEvents = [{ type: "message", value: { audio: base64(mp3Bytes(1)), is_final: true } }];
     var speakingB = speak({ text: "B", lang: "en" });
     var both = await Promise.all([speakingA, speakingB]);
-    ok(both[0].result.value === "SUQz//uQAA==" && both[1].result.value === "Qg==" &&
+    ok(both[0].result && both[1].result && both[0].result.value === base64(mp3Bytes()) &&
+        both[1].result.value === base64(mp3Bytes(1)) &&
         sockets[socketStart].sent[0].voices[0] === "voiceA" &&
         sockets[socketStart + 1].sent[0].voices[0] === "voiceB", "并行 Turbo 请求保持参数和音频隔离");
     ok(!timers[timerStart].active && !timers[timerStart + 1].active,
