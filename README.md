@@ -22,7 +22,7 @@
 
 **默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3；v3 Conversational 是 v3 的低延迟版，按字符计费也只要 v3 的一半，想要表现力又不想多等可以选它。音频码率可调，32kbps 能明显缩短等待。
 
-**v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
+**v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符。官方 [Text to Dialogue 文档](https://elevenlabs.io/docs/overview/capabilities/text-to-dialogue)建议每次请求不超过 2,000 字符以保证生成可靠，插件据此把 Turbo 的单次上限在本地限制为 2000 字符。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
 **102 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；Bob 为格鲁吉亚语登记了 `ka` 和 `jy` 两个代码，插件两个都声明，均映射为 `ka`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
@@ -60,7 +60,7 @@ make install
 | API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
 | 音色不存在 | 自定义 Voice ID 写错，或那个音色不在当前账号下 |
-| 文本超过单次字符上限 | 各模型限制不同；v4 为 10000 字符，Turbo 的 10000 为插件本地限制。分段朗读即可 |
+| 文本超过单次字符上限 | 各模型限制不同；v4 为 10000 字符，Turbo 为插件本地限制的 2000 字符。分段朗读，或改用上限更高的模型 |
 | 请求过于频繁 | 触发并发限制，稍等重试 |
 
 ## 开发

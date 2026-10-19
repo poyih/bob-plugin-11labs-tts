@@ -51,7 +51,7 @@
                     "value": "eleven_v3_conversational"
                 }
             ],
-            "desc": "Flash 适合划词即时朗读；v4 提供最新音质与表现力，单次最多 10000 字符；v4 Turbo 兼顾表现力与低延迟，插件单次也限制为 10000 字符。v4 系列仅支持稳定性和相似度设置，语速、风格和 Speaker Boost 不生效。"
+            "desc": "Flash 适合划词即时朗读；v4 提供最新音质与表现力，单次最多 10000 字符；v4 Turbo 兼顾表现力与低延迟，按官方建议插件单次限制为 2000 字符，更长的文本请改用 v4 或 Flash。v4 系列仅支持稳定性和相似度设置，语速、风格和 Speaker Boost 不生效。"
         },
         {
             "identifier": "voice",

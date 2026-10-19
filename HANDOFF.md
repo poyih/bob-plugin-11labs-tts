@@ -8,7 +8,7 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版�
 
 ### 2026-10-19：代码检查，核验工具与插件对齐
 
-- **现状核对**：v1.0.14 的 CI 与 Release 工作流均为绿色；Release 资产的 SHA256 与 `appcast.json` 一致，包内 7 个文件与 v1.0.14 tag 的 `src/` 逐字节相同。全量离线测试在 Linux 版 JavaScriptCore（WebKitGTK 2.52.6）下同样通过。运行时只新增下面的格鲁吉亚语别名，不紧急，可以随下一个版本发布。
+- **现状核对**：v1.0.14 的 CI 与 Release 工作流均为绿色；Release 资产的 SHA256 与 `appcast.json` 一致，包内 7 个文件与 v1.0.14 tag 的 `src/` 逐字节相同。全量离线测试在 Linux 版 JavaScriptCore（WebKitGTK 2.52.6）下同样通过。运行时只改了两处：新增下面的格鲁吉亚语别名，以及把 Turbo 的本地上限降到 2000。都不紧急，随下一个版本发布即可。
 - **Bob 侧复核**：最新版是 Bob 1.21.2（2026-10-13）。1.21.1 / 1.21.2 只改了 macOS 27 的离线文字识别，1.21.0 的插件改动只涉及翻译插件，TTS、`$http`、`$data`、`$websocket`、`$timer` 的文档都没有变化。`$websocket` 文档仍写着 `close()`「可不传」，所以 `close({})` 和清空监听器的规避要保留。`minBobVersion` 1.8.0 仍正确：用到的最高版本 API 是 `textConfig` 和 1.8.0 的 `$http` 错误结构；`$websocket`、`$timer`、`pluginValidate`、`pluginTimeoutInterval` 都是 1.6.0。appcast 字段没有变化。
 - **Bob 语言表复核（已补）**：原先声明的 101 个代码都在 [Bob 官方语言代码表](https://bobtranslate.com/plugin/addition/language.html)里，拼写和大小写一致。表中 `jy` 与 `ka` 都登记为格鲁吉亚语，插件原先只声明了 `ka`。现已补上 `jy → ka`，与已有的 `jw → jv` 同理，声明数变为 102。`hbs`、`ku`/`kmr`、`azb`、`cnr`/`me` 与 ElevenLabs 的语言并非一一对应，不做映射；Bob 的 `kdx` 是侗语，不是 ElevenLabs 的 `kam`（坎巴语）。
 - **核验工具的 MP3 校验与插件不一致（已修）**：v1.0.14 的 `src/audio.js` 会逐帧检查到末尾，`api_client.is_mp3` 却只检查首帧。尾部垃圾、末帧截断、中途换采样率/版本、ID3 保留标志位、footer 不一致、保留 emphasis 这 7 类数据在 Python 里判为通过，在插件里会被拒绝。也就是说，即使用真实 Key 跑 `verify_api.py` 全部通过，也不能证明插件会接受同样的音频。现已把同一套逐帧规则移植到 Python，并新增跨实现测试：同一组夹具分别交给 Python 和 jsc 里的 `src/audio.js`，两边判定必须一致。
@@ -21,7 +21,8 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版�
   - Default 音色到期日仍是 2026-12-31；19 个接班音色 ID 与官方表格中的链接逐一相符。官方另写明 Default 音色只对 2026 年 3 月前注册的账户开放。
   - `detail.status` 已标为 legacy，插件同时读取 `code` 和 `status`。官方错误表新列出的 `invalid_voice_id`、`unsupported_model`、`rate_limit_exceeded`、`internal_error` 等落在现有状态码兜底里，提示可读，暂不改分派。
 - **v4 语言代码：官方文档自相矛盾（待真 Key 判定）**：开发者模型页给 v4 列出 84 个 `language_code`，其中挪威语写 `no`，还有 `ga`、`yo`；帮助中心列出 91 种，挪威语为 Bokmål，并多出 `am`、`ckb`、`ff`、`kam`、`lg`、`lo`、`sn`、`wo`、`zu`。插件目录按帮助中心对挪威语下发 `nb`。模型页的 v3 名单（85 种）也与 2026-09-25 实测的 `/v1/models`（74 种）不符，所以两份文档都不能直接当作 API 事实。`verify_api.py --only language` 已新增 v4 + `no` / `nb` / `yue` / `zu` / `ga` 五条探针；也可以用带 Models: Read 权限的 Key 跑 `make sync`，再用 `git diff src/model_catalog.js` 查看 v4 的实际语言集。发下一版之前应先跑其中一项：若 `nb` 返回 400，就把 v4 挪威语改为 `no` 或不下发。
-- **v4 Turbo 的两个未定项**：WebSocket 的 `voice_settings` schema 只列出 `stability`（说明文字针对 v3）；v4 指南写两款都用 Stability 和 Similarity。插件会下发 `similarity_boost`，需要在 Bob 里设置「音色相似度」后用 Turbo 实测。另外，Text to Dialogue 文档建议每次请求的总文本不超过 2,000 字符，以保证生成可靠；插件给 Turbo 设的本地上限是 10000。超过约 2000 字时容易先撞上 50 秒超时，可考虑把本地上限降到 2000，待实测后再定。
+- **v4 Turbo 本地上限 10000 → 2000（已改）**：[Text to Dialogue 文档](https://elevenlabs.io/docs/overview/capabilities/text-to-dialogue)建议「each request at or below 2,000 characters for reliable generation」。超过约 2000 字时，请求也容易先撞上 50 秒超时。现在超出 2000 字会在建立连接之前直接提示分段，或改用 v4（HTTP，10000）/ Flash。`catalog.refresh` 不会用 API 元数据覆盖 `localLimit` 模型的上限。下方 2026-09-30 记录的「Turbo 10000 本地限制」是当时的状态。
+- **v4 Turbo 的 `similarity_boost` 待实测**：WebSocket 的 `voice_settings` schema 只列出 `stability`（说明文字针对 v3）；v4 指南写两款都用 Stability 和 Similarity。插件会下发 `similarity_boost`，需要在 Bob 里设置「音色相似度」后用 Turbo 实测。
 - **`make test JSC=...` 覆盖到 Python 测试**：`test_sync.py` / `test_tools.py` 改为读取 `JSC` 环境变量，Makefile 会传入，非 macOS 环境装好 jsc 即可跑全套测试。
 - **仍待真机 / 真 Key 验证（最重要）**：v1.0.14 的逐帧校验至今只用合成夹具测过。一份公开的旧 ElevenLabs 试听 MP3（Rachel，64kbps，71 帧，无 ID3）能通过插件校验，但它不是当前 API 的实时输出，只能算弱证据。建议尽快执行 `python3 scripts/verify_api.py --only formats --only models --only language`（约 30~50 credits）。现在它与插件使用同一套 MP3 判定，也会顺带判定上文的 v4 语言代码；再在 Bob 里分别朗读 Flash v2.5、v4 和 v4 Turbo（WebSocket 不在探针覆盖范围内）。若出现「MP3 音频损坏或不完整」，先回退或放宽 `audio.js`，再定位原因。
 

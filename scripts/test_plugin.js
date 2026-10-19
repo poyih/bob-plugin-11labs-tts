@@ -876,11 +876,12 @@ var EN = { text: "hello world", lang: "en" };
     ok(v.result === true && ws.sent[1].inputs[0].text === "a" && ws.sent[2].close_socket === true,
         "Turbo 配置验证也用 WebSocket 单字符合成并 flush");
     ok(ws.options.timeoutInterval === 15 && ws.closed, "Turbo 验证遵守验证超时并清理连接");
-    await speak({ text: new Array(10001).join("x"), lang: "en" });
+    r = await speak({ text: new Array(2001).join("x"), lang: "en" });
+    ok(r.result, "Turbo 恰好 2000 字符可请求");
     var socketCount = sockets.length;
-    r = await speak({ text: new Array(10002).join("x"), lang: "en" });
-    ok(r.error && r.error.type === "param" && r.error.message.indexOf("插件单次上限") >= 0 &&
-        sockets.length === socketCount, "Turbo 明确标注本地 10000 字符上限，超长文本不建连接");
+    r = await speak({ text: new Array(2002).join("x"), lang: "en" });
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("插件单次上限 2000") >= 0 &&
+        sockets.length === socketCount, "Turbo 按官方建议本地限制 2000 字符，超长文本不建连接");
 
     // 32. 失败时不播放部分音频，且所有终止路径都关闭 socket / 清理 timer。
     nextSocketEvents = [{ type: "message", value: { error: "insufficient_permissions", message: "no tts scope" } }];
