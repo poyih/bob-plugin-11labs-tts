@@ -6,6 +6,14 @@
 
 Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版本 v1.0.14，包含 v4 系列接入、目录同步、发布流程、WebSocket 收尾修复与 MP3 结构校验。
 
+### 2026-10-19：代码检查，核验工具与插件对齐
+
+- **现状核对**：v1.0.14 的 CI 与 Release 工作流均为绿色；Release 资产的 SHA256 与 `appcast.json` 一致，包内 7 个文件与 main 分支的 `src/` 逐字节相同。全量离线测试在 Linux 版 JavaScriptCore（WebKitGTK 2.52.6）下同样通过。插件运行时（`src/`）本次未改，不需要发新版。
+- **核验工具的 MP3 校验与插件不一致（已修）**：v1.0.14 的 `src/audio.js` 会逐帧检查到末尾，`api_client.is_mp3` 却只检查首帧。尾部垃圾、末帧截断、中途换采样率/版本、ID3 保留标志位、footer 不一致、保留 emphasis 这 7 类数据在 Python 里判为通过，在插件里会被拒绝。也就是说，即使用真实 Key 跑 `verify_api.py` 全部通过，也不能证明插件会接受同样的音频。现已把同一套逐帧规则移植到 Python，并新增跨实现测试：同一组夹具分别交给 Python 和 jsc 里的 `src/audio.js`，两边判定必须一致。
+- **发布包哈希受 umask 影响（已修）**：`build_bundle()` 把工作区的文件权限写进 zip。`git archive` 或 umask 002 的检出得到 0664，CI 是 0644，所以本地无法复现发布哈希。现在固定写 0644，CI 产物不变：用 `git archive v1.0.14` 在 Linux 重建，得到与 appcast 相同的 `afe99a57…`。
+- **`make test JSC=...` 覆盖到 Python 测试**：`test_sync.py` / `test_tools.py` 改为读取 `JSC` 环境变量，Makefile 会传入，非 macOS 环境装好 jsc 即可跑全套测试。
+- **仍待真机 / 真 Key 验证（最重要）**：v1.0.14 的逐帧校验至今只用合成夹具测过。一份公开的旧 ElevenLabs 试听 MP3（Rachel，64kbps，71 帧，无 ID3）能通过插件校验，但它不是当前 API 的实时输出，只能算弱证据。建议尽快执行 `python3 scripts/verify_api.py --only formats --only models`（约 10~20 credits），现在它与插件使用同一套判定；再在 Bob 里分别朗读 Flash v2.5、v4 和 v4 Turbo（WebSocket 不在探针覆盖范围内）。若出现「MP3 音频损坏或不完整」，先回退或放宽 `audio.js`，再定位原因。
+
 ### 2026-10-18：音频校验、语言声明与发布依赖维护
 
 - **损坏音频回归**：v1.0.13 在 HTTP 200、`audio/mpeg`、正文仅三字节 `ff ff ff` 时，朗读返回成功且配置验证通过；Turbo 收到同样损坏的分块及 `is_final` 也返回成功。新增 `src/audio.js`，HTTP 与 WebSocket 的朗读、验证入口统一检查 MP3 帧结构。只使用已验证可用的 base64，不依赖 `$data.length` 或新增原生方法。
@@ -59,7 +67,7 @@ Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版�
 ## 现成的工具
 
 ```bash
-make test                              # 插件离线检查 + sync 16 组 / tools 23 组测试
+make test                              # 插件离线检查 + sync 16 组 / tools 25 组测试
 python3 scripts/verify_api.py          # 拿真实 Key 打 ElevenLabs，6 组探针，约 40~50 credits
 python3 scripts/verify_api.py --dry-run
 python3 scripts/resolve_voices.py --offline   # 官方 19 个接班音色 ID 对照表（不联网、不要 Key）

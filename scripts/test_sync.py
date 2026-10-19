@@ -21,6 +21,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -219,7 +220,7 @@ def test_config_tables_cover_menu():
 
 
 def runtime_tables(catalog_path):
-    jsc = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc"
+    jsc = os.environ.get("JSC", "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc")
     code = ('globalThis.exports={};load(' + json.dumps(str(catalog_path)) + ');var c=exports;'
             'globalThis.require=function(){return c;};globalThis.exports={};load("src/config.js");'
             'print(JSON.stringify({MODELS:exports.MODELS,MODEL_LANGUAGES:exports.MODEL_LANGUAGES,MODEL_SETTINGS:exports.MODEL_SETTINGS}));')

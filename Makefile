@@ -23,10 +23,10 @@ test: lint test-sync test-tools ## 跑全部离线单测（不联网、不消耗
 	 done
 
 test-sync: ## 跑 sync_catalog 展示层规则单测（不联网）
-	@python3 scripts/test_sync.py
+	@JSC="$(JSC)" python3 scripts/test_sync.py
 
 test-tools: ## 跑发布和 API 核验工具单测（不联网）
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_tools.py
+	@JSC="$(JSC)" PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_tools.py
 
 pack: test ## 打包成 .bobplugin
 	@rm -rf dist && mkdir -p dist

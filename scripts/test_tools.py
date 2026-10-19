@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """发布与 API 核验工具的纯本地回归测试；不联网、不消耗额度。"""
 
+import base64
 import contextlib
 import importlib.util
 import io
@@ -15,6 +16,7 @@ from unittest.mock import patch
 import api_client
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+JSC = os.environ.get("JSC", "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc")
 
 
 def load_script(name):
@@ -35,6 +37,53 @@ def write_json(path, value):
         json.dumps(value, indent=4, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+
+
+def frame(header, length):
+    return bytes(header) + bytes(length - len(header))
+
+
+def id3(version, body=b"", flags=0, footer=False):
+    flags |= 0x10 if footer else 0
+    header = b"ID3" + bytes([version, 0, flags]) + bytes((len(body) >> shift) & 0x7F for shift in (21, 14, 7, 0))
+    return header + body + (b"3DI" + header[3:] if footer else b"")
+
+
+def mp3_fixtures():
+    """(说明, 字节, 是否应接受)；Python 核验工具与 src/audio.js 必须给出相同判定。"""
+    m128 = frame((0xFF, 0xFB, 0x90, 0x00), 417)
+    m48k = frame((0xFF, 0xFB, 0x94, 0x00), 384)
+    m22050 = frame((0xFF, 0xF3, 0x40, 0x00), 104)
+    body = b"TIT2\x00\x00\x00\x02\x00\x00\x03x"
+    id3v1 = b"TAG" + bytes(125)
+    return [
+        ("128kbps 多帧且 padding 变化", m128 + frame((0xFF, 0xFB, 0x92, 0x00), 418) + m128, True),
+        ("64kbps", frame((0xFF, 0xFB, 0x50, 0x00), 208) * 2, True),
+        ("192kbps", frame((0xFF, 0xFB, 0xB0, 0x00), 626), True),
+        ("22.05kHz 32kbps", m22050 * 2, True),
+        ("ID3v2.3 + 帧", id3(3, body) + m128, True),
+        ("ID3v2.4 footer + 帧", id3(4, body, footer=True) + m128, True),
+        ("帧 + ID3v1", m128 + id3v1, True),
+        ("帧内数据恰好含 TAG", m128[:-128] + id3v1, True),
+        ("空响应", b"", False),
+        ("只有 ID3", id3(4, body), False),
+        ("尾部垃圾", m128 + b"garbage", False),
+        ("末帧截断", m128 + m128[:200], False),
+        ("首帧截断", m128[:-1], False),
+        ("中途换采样率", m128 + m48k, False),
+        ("中途换 MPEG 版本", m128 + m22050, False),
+        ("ID3 后夹杂 padding", id3(3, body) + bytes(4) + m128, False),
+        ("ID3v1 前没有音频帧", id3v1, False),
+        ("ID3 大小非 syncsafe", b"ID3\x04\x00\x00\x00\x00\x00\x80" + m128, False),
+        ("ID3 保留标志位", id3(3, body, flags=0x01) + m128, False),
+        ("ID3v2.4 footer 不一致", id3(4, body, footer=True)[:-1] + b"\x01" + m128, False),
+        ("Layer II", frame((0xFF, 0xFD, 0x90, 0x00), 417), False),
+        ("保留 MPEG 版本", frame((0xFF, 0xEB, 0x90, 0x00), 417), False),
+        ("free-format", frame((0xFF, 0xFB, 0x00, 0x00), 417), False),
+        ("非法码率", frame((0xFF, 0xFB, 0xF0, 0x00), 417), False),
+        ("保留采样率", frame((0xFF, 0xFB, 0x9C, 0x00), 417), False),
+        ("保留 emphasis", frame((0xFF, 0xFB, 0x90, 0x02), 417), False),
+    ]
 
 
 class ReleaseTests(unittest.TestCase):
@@ -80,14 +129,18 @@ class ReleaseTests(unittest.TestCase):
             (source / "info.json").write_text('{"version":"1.2.3"}\n', encoding="utf-8")
             (source / ".DS_Store").write_bytes(b"noise")
 
+            (source / "main.js").chmod(0o644)
             bundle = release.build_bundle("1.2.3", root)
             first = release.sha256_of(bundle)
             os.utime(source / "main.js", (2_000_000_000, 2_000_000_000))
+            # git archive 与 umask 002 的检出得到 0664，同一源码的发布包哈希不能因此变化。
+            (source / "main.js").chmod(0o664)
             second = release.sha256_of(release.build_bundle("1.2.3", root))
 
             self.assertEqual(first, second)
             with release.zipfile.ZipFile(bundle) as archive:
                 self.assertEqual(archive.namelist(), ["info.json", "main.js"])
+                self.assertEqual({item.external_attr >> 16 for item in archive.infolist()}, {0o100644})
 
     def test_release_rejects_unprepared_source_without_writing(self):
         with tempfile.TemporaryDirectory() as source_temp, tempfile.TemporaryDirectory() as meta_temp:
@@ -306,7 +359,8 @@ class HttpClientTests(unittest.TestCase):
                 self.assertTrue(verify_api.Result("models", "voice", status, detail, note).ok)
 
     def test_empty_truncated_and_non_mp3_binary_are_rejected(self):
-        for payload in (b"", self.MP3[:4], b"ID3\x04\x00\x00\x00\x00\x00\x00", b"\xff\x00garbage"):
+        for payload in (b"", self.MP3[:4], b"ID3\x04\x00\x00\x00\x00\x00\x00", b"\xff\x00garbage",
+                        self.MP3 + b"garbage", self.MP3 + self.MP3[:200]):
             with self.subTest(payload=payload), patch.object(
                 api_client.urllib.request, "urlopen", return_value=self.response(payload)
             ):
@@ -328,6 +382,23 @@ class HttpClientTests(unittest.TestCase):
     def test_server_failures_are_operational_not_expected_probe_errors(self):
         self.assertTrue(verify_api.Result("models", "server", 503, {"detail": "busy"}).operational_failure)
         self.assertFalse(verify_api.Result("status", "bad model", 400, {"detail": "model_not_found"}).operational_failure)
+
+
+class Mp3StructureTests(unittest.TestCase):
+    def test_python_check_walks_every_frame(self):
+        for label, payload, expected in mp3_fixtures():
+            with self.subTest(label):
+                self.assertEqual(api_client.is_mp3(payload), expected)
+
+    @unittest.skipUnless(os.path.exists(JSC), f"缺少 JavaScriptCore：{JSC}")
+    def test_python_check_matches_plugin_runtime(self):
+        # 用 Bob 同款引擎跑 src/audio.js：真实 Key 的核验结论必须等同于插件运行时的判定。
+        fixtures = mp3_fixtures()
+        encoded = json.dumps([base64.b64encode(payload).decode() for _, payload, _ in fixtures])
+        code = ('globalThis.exports={};load("src/audio.js");var audio=exports;'
+                'print(JSON.stringify(' + encoded + '.map(function(s){return audio.isMP3(s);})));')
+        output = subprocess.run([JSC, "-e", code], cwd=ROOT, check=True, capture_output=True, text=True).stdout
+        self.assertEqual(json.loads(output), [api_client.is_mp3(payload) for _, payload, _ in fixtures])
 
 
 class AppcastPublishTests(unittest.TestCase):

@@ -71,6 +71,8 @@ make pack     # 打包到 dist/
 make install  # 打包并交给 Bob 安装
 ```
 
+非 macOS 环境可以安装 WebKitGTK 的 jsc（如 Ubuntu 的 `libjavascriptcoregtk-bin`），再运行 `make test JSC=/usr/bin/jsc`。该引擎版本与 Bob 内置的不同，结果只作辅助参考，最终以 macOS CI 为准。
+
 模型和音色列表会随 ElevenLabs 更新而过期，随手同步一下即可（会提示输入 API Key，不回显、不进 shell 历史）：
 
 ```bash
@@ -113,7 +115,7 @@ python3 scripts/verify_api.py --only status --only models
 python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 ```
 
-失败的请求不计费，成功的用 2 字符文本把成本压到最低。
+失败的请求不计费，成功的用 2 字符文本把成本压到最低。合成响应按插件同款规则逐帧检查 MP3 结构（`scripts/api_client.py` 与 `src/audio.js` 的判定由测试锁定一致），探针通过即说明插件不会把同样的响应判为损坏音频。
 
 发版：
 
@@ -127,7 +129,7 @@ git tag v1.0.8 && git push origin v1.0.8
 
 版本号必须先写入源码并提交，tag 再指向该提交。发布工作流会从 **tag checkout** 测试和打包，并校验 tag 内的 `src/info.json` 已是同版本；默认分支的独立 checkout 只负责更新 `appcast.json`，因此不会把 tag 之后的新代码混进旧版本包。
 
-GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。
+GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。包内条目固定时间戳和 0644 权限，不受 umask 或 `git archive` 影响；在任何平台用 `release.py --version` 从 tag 源码重建，都应得到与 appcast 相同的 sha256。
 
 发布器先保存本次 tag 构建的固定版本记录，再上传 Release 安装包。appcast 发布器从最新默认分支创建临时 worktree，只合并该版本记录；并发提交导致推送被拒时最多尝试三次。调用者的暂存区和未提交文件不参与提交，也不会在重试时从默认分支重新构建安装包。
 
@@ -149,7 +151,7 @@ scripts/
   test_audio.js     MP3 帧、ID3 标签和截断数据的离线结构测试
   test_sync.py      同步器展示层与默认值测试
   test_tools.py     发布器与 API 核验工具测试
-  api_client.py     核验工具的共用 HTTP 与 MP3 响应校验
+  api_client.py     核验工具的共用 HTTP 与 MP3 逐帧校验（判定与 audio.js 一致）
   catalog.py        模型目录读取、元数据更新和写入验证
   release.py        准备版本 → 从 tag 确定性打包 → 更新 appcast
   publish_appcast.py 从最新默认分支合并固定发布记录，并发推送时重试
