@@ -110,7 +110,7 @@ grep '11labs-tts.*runtime' ~/Library/Containers/com.hezongyidev.Bob/Data/Documen
 **API 探针** —— 从环境变量 `ELEVENLABS_API_KEY` 读取 Key（未设置时安全地交互输入），打真实 ElevenLabs 请求，分别记录 `detail.code` 与 `detail.status`、各模型可用性、格式订阅门槛、`voice_settings` 能否部分下发、`language_code` 到底被忽略还是报错：
 
 ```bash
-python3 scripts/verify_api.py            # 全量，约 40~50 credits
+python3 scripts/verify_api.py            # 全量，约 50~60 credits
 python3 scripts/verify_api.py --only status --only models
 python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 ```

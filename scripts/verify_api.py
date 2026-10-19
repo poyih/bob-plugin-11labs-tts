@@ -291,6 +291,13 @@ def probes_language(api_key, voice):
         ("v3_conversational + zh", "eleven_v3_conversational", "zh"),
         ("v3_conversational + af（/v1/models 语言集与 v3 相同）", "eleven_v3_conversational", "af"),
         ("flash_v2 仅英语 + zh", "eleven_flash_v2", "zh"),
+        # 官方 v4 语言名单互相矛盾：模型页写 Norwegian (no)、有 ga / yo；帮助中心写 Bokmål，
+        # 并多出 am / zu 等。插件现按帮助中心下发 nb，这几条判定是否会 400。
+        ("v4 + no（模型页写法）", "eleven_v4", "no"),
+        ("v4 + nb（插件当前下发）", "eleven_v4", "nb"),
+        ("v4 + yue（粤语）", "eleven_v4", "yue"),
+        ("v4 + zu（仅帮助中心名单）", "eleven_v4", "zu"),
+        ("v4 + ga（仅模型页名单）", "eleven_v4", "ga"),
     ]
     for name, model, code in cases:
         s, d, n = tts(api_key, voice, model_id=model, language_code=code)
