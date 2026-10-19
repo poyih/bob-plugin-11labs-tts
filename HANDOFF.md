@@ -4,11 +4,11 @@
 
 ## 这是什么
 
-Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版本 v1.0.14，包含 v4 系列接入、目录同步、发布流程、WebSocket 收尾修复与 MP3 结构校验。
+Bob（macOS 翻译软件）的 ElevenLabs 语音合成插件。当前源码版本 v1.1.0，包含 v4 系列接入、目录同步、发布流程、WebSocket 收尾修复、MP3 结构校验，以及 v4 Turbo 的 2000 字本地上限。
 
 ### 2026-10-19：代码检查，核验工具与插件对齐
 
-- **现状核对**：v1.0.14 的 CI 与 Release 工作流均为绿色；Release 资产的 SHA256 与 `appcast.json` 一致，包内 7 个文件与 v1.0.14 tag 的 `src/` 逐字节相同。全量离线测试在 Linux 版 JavaScriptCore（WebKitGTK 2.52.6）下同样通过。运行时只改了两处：新增下面的格鲁吉亚语别名，以及把 Turbo 的本地上限降到 2000。都不紧急，随下一个版本发布即可。
+- **现状核对**：v1.0.14 的 CI 与 Release 工作流均为绿色；Release 资产的 SHA256 与 `appcast.json` 一致，包内 7 个文件与 v1.0.14 tag 的 `src/` 逐字节相同。全量离线测试在 Linux 版 JavaScriptCore（WebKitGTK 2.52.6）下同样通过。运行时只改了两处：新增下面的格鲁吉亚语别名，以及把 Turbo 的本地上限降到 2000。两处都随 v1.1.0 发布。
 - **Bob 侧复核**：最新版是 Bob 1.21.2（2026-10-13）。1.21.1 / 1.21.2 只改了 macOS 27 的离线文字识别，1.21.0 的插件改动只涉及翻译插件，TTS、`$http`、`$data`、`$websocket`、`$timer` 的文档都没有变化。`$websocket` 文档仍写着 `close()`「可不传」，所以 `close({})` 和清空监听器的规避要保留。`minBobVersion` 1.8.0 仍正确：用到的最高版本 API 是 `textConfig` 和 1.8.0 的 `$http` 错误结构；`$websocket`、`$timer`、`pluginValidate`、`pluginTimeoutInterval` 都是 1.6.0。appcast 字段没有变化。
 - **Bob 语言表复核（已补）**：原先声明的 101 个代码都在 [Bob 官方语言代码表](https://bobtranslate.com/plugin/addition/language.html)里，拼写和大小写一致。表中 `jy` 与 `ka` 都登记为格鲁吉亚语，插件原先只声明了 `ka`。现已补上 `jy → ka`，与已有的 `jw → jv` 同理，声明数变为 102。`hbs`、`ku`/`kmr`、`azb`、`cnr`/`me` 与 ElevenLabs 的语言并非一一对应，不做映射；Bob 的 `kdx` 是侗语，不是 ElevenLabs 的 `kam`（坎巴语）。
 - **核验工具的 MP3 校验与插件不一致（已修）**：v1.0.14 的 `src/audio.js` 会逐帧检查到末尾，`api_client.is_mp3` 却只检查首帧。尾部垃圾、末帧截断、中途换采样率/版本、ID3 保留标志位、footer 不一致、保留 emphasis 这 7 类数据在 Python 里判为通过，在插件里会被拒绝。也就是说，即使用真实 Key 跑 `verify_api.py` 全部通过，也不能证明插件会接受同样的音频。现已把同一套逐帧规则移植到 Python，并新增跨实现测试：同一组夹具分别交给 Python 和 jsc 里的 `src/audio.js`，两边判定必须一致。
