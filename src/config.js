@@ -90,6 +90,7 @@ var LANGUAGES = [
     ["et", "et", "v3"],
     ["gl", "gl", "v3"],
     ["ka", "ka", "v3"],
+    ["jy", "ka", "v3"],
     ["gu", "gu", "v3"],
     ["ha", "ha", "v3"],
     ["he", "he", "v3"],

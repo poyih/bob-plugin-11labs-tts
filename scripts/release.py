@@ -107,7 +107,8 @@ def build_bundle(version, root=ROOT):
                 relative = path.relative_to(source).as_posix()
                 member = zipfile.ZipInfo(relative, ZIP_TIMESTAMP)
                 member.create_system = 3
-                member.external_attr = (0o100000 | (path.stat().st_mode & 0o777)) << 16
+                # 权限随 umask / git archive 变化（0644 或 0664），不能进入发布包哈希。
+                member.external_attr = 0o100644 << 16
                 archive.writestr(
                     member,
                     path.read_bytes(),

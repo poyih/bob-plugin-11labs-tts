@@ -170,7 +170,7 @@ var MODEL_CATALOG = {
         "order": 2,
         "hidden": false,
         "deprecated": false,
-        "charLimit": 10000,
+        "charLimit": 2000,
         "transport": "dialogueWebSocket",
         "sendLanguageCode": true,
         "languages": [

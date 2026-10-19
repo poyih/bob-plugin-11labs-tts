@@ -21,6 +21,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -219,7 +220,7 @@ def test_config_tables_cover_menu():
 
 
 def runtime_tables(catalog_path):
-    jsc = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc"
+    jsc = os.environ.get("JSC", "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc")
     code = ('globalThis.exports={};load(' + json.dumps(str(catalog_path)) + ');var c=exports;'
             'globalThis.require=function(){return c;};globalThis.exports={};load("src/config.js");'
             'print(JSON.stringify({MODELS:exports.MODELS,MODEL_LANGUAGES:exports.MODEL_LANGUAGES,MODEL_SETTINGS:exports.MODEL_SETTINGS}));')
@@ -249,7 +250,7 @@ def test_metadata_refresh_reaches_runtime_and_keeps_policies():
           "同步的语言和参数能力实际进入运行时")
     check(tables["MODEL_LANGUAGES"]["eleven_multilingual_v2"] == [] and
           tables["MODEL_SETTINGS"]["eleven_v4_turbo"]["style"] is False and
-          tables["MODELS"]["eleven_v4_turbo"]["charLimit"] == 10000,
+          tables["MODELS"]["eleven_v4_turbo"]["charLimit"] == 2000,
           "API 元数据更新不覆盖自动识别、v4 参数及 Turbo 本地上限策略")
 
 

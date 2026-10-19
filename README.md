@@ -22,9 +22,9 @@
 
 **默认选型偏向即时朗读。** Flash v2.5 延迟约 75ms、按字符计费只要一半，适合划词即点即读；要更好的情感表现可切 Multilingual v2 或 v3；v3 Conversational 是 v3 的低延迟版，按字符计费也只要 v3 的一半，想要表现力又不想多等可以选它。音频码率可调，32kbps 能明显缩短等待。
 
-**v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
+**v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符。官方 [Text to Dialogue 文档](https://elevenlabs.io/docs/overview/capabilities/text-to-dialogue)建议每次请求不超过 2,000 字符以保证生成可靠，插件据此把 Turbo 的单次上限在本地限制为 2000 字符。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
-**101 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+**102 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；Bob 为格鲁吉亚语登记了 `ka` 和 `jy` 两个代码，插件两个都声明，均映射为 `ka`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
 **可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 测插件运行时、同步器、发布器和 API 核验工具，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
@@ -60,7 +60,7 @@ make install
 | API Key 缺少权限 | Key 有效但没勾 `text_to_speech`。ElevenLabs 新建 Key 默认是受限的，需要逐项勾选 —— 换 Key 没用，去补权限 |
 | ElevenLabs 字符额度已用完 | 当月免费/订阅额度耗尽，去 [订阅页](https://elevenlabs.io/app/subscription) 看用量 |
 | 音色不存在 | 自定义 Voice ID 写错，或那个音色不在当前账号下 |
-| 文本超过单次字符上限 | 各模型限制不同；v4 为 10000 字符，Turbo 的 10000 为插件本地限制。分段朗读即可 |
+| 文本超过单次字符上限 | 各模型限制不同；v4 为 10000 字符，Turbo 为插件本地限制的 2000 字符。分段朗读，或改用上限更高的模型 |
 | 请求过于频繁 | 触发并发限制，稍等重试 |
 
 ## 开发
@@ -70,6 +70,8 @@ make test     # 语法检查 + jsc 单测
 make pack     # 打包到 dist/
 make install  # 打包并交给 Bob 安装
 ```
+
+非 macOS 环境可以安装 WebKitGTK 的 jsc（如 Ubuntu 的 `libjavascriptcoregtk-bin`），再运行 `make test JSC=/usr/bin/jsc`。该引擎版本与 Bob 内置的不同，结果只作辅助参考，最终以 macOS CI 为准。
 
 模型和音色列表会随 ElevenLabs 更新而过期，随手同步一下即可（会提示输入 API Key，不回显、不进 shell 历史）：
 
@@ -108,12 +110,12 @@ grep '11labs-tts.*runtime' ~/Library/Containers/com.hezongyidev.Bob/Data/Documen
 **API 探针** —— 从环境变量 `ELEVENLABS_API_KEY` 读取 Key（未设置时安全地交互输入），打真实 ElevenLabs 请求，分别记录 `detail.code` 与 `detail.status`、各模型可用性、格式订阅门槛、`voice_settings` 能否部分下发、`language_code` 到底被忽略还是报错：
 
 ```bash
-python3 scripts/verify_api.py            # 全量，约 40~50 credits
+python3 scripts/verify_api.py            # 全量，约 50~60 credits
 python3 scripts/verify_api.py --only status --only models
 python3 scripts/verify_api.py --dry-run  # 只看会发什么，不联网
 ```
 
-失败的请求不计费，成功的用 2 字符文本把成本压到最低。
+失败的请求不计费，成功的用 2 字符文本把成本压到最低。合成响应按插件同款规则逐帧检查 MP3 结构（`scripts/api_client.py` 与 `src/audio.js` 的判定由测试锁定一致），探针通过即说明插件不会把同样的响应判为损坏音频。
 
 发版：
 
@@ -127,7 +129,7 @@ git tag v1.0.8 && git push origin v1.0.8
 
 版本号必须先写入源码并提交，tag 再指向该提交。发布工作流会从 **tag checkout** 测试和打包，并校验 tag 内的 `src/info.json` 已是同版本；默认分支的独立 checkout 只负责更新 `appcast.json`，因此不会把 tag 之后的新代码混进旧版本包。
 
-GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。
+GitHub Actions 会跑测试、确定性打包、算 sha256、按语义版本更新 `appcast.json` 并创建 Release。同版本重跑会替换记录而不是重复或插错顺序。Bob 靠 `appcast.json` 检查更新。包内条目固定时间戳和 0644 权限，不受 umask 或 `git archive` 影响；在任何平台用 `release.py --version` 从 tag 源码重建，都应得到与 appcast 相同的 sha256。
 
 发布器先保存本次 tag 构建的固定版本记录，再上传 Release 安装包。appcast 发布器从最新默认分支创建临时 worktree，只合并该版本记录；并发提交导致推送被拒时最多尝试三次。调用者的暂存区和未提交文件不参与提交，也不会在重试时从默认分支重新构建安装包。
 
@@ -149,7 +151,7 @@ scripts/
   test_audio.js     MP3 帧、ID3 标签和截断数据的离线结构测试
   test_sync.py      同步器展示层与默认值测试
   test_tools.py     发布器与 API 核验工具测试
-  api_client.py     核验工具的共用 HTTP 与 MP3 响应校验
+  api_client.py     核验工具的共用 HTTP 与 MP3 逐帧校验（判定与 audio.js 一致）
   catalog.py        模型目录读取、元数据更新和写入验证
   release.py        准备版本 → 从 tag 确定性打包 → 更新 appcast
   publish_appcast.py 从最新默认分支合并固定发布记录，并发推送时重试

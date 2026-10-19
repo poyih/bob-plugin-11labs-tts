@@ -330,9 +330,11 @@ var EN = { text: "hello world", lang: "en" };
     var langs = plugin.supportLanguages();
     ok(Array.isArray(langs) && langs.length > 30, "supportLanguages 返回语言数组");
     ok(langs.indexOf("zh-Hans") >= 0 && langs.indexOf("en") >= 0, "语言列表包含 zh-Hans 与 en");
-    ok(langs.length === 101 && new Set(langs).size === 101 &&
+    ok(langs.length === 102 && new Set(langs).size === 102 &&
         langs.indexOf("ff") < 0 && langs.indexOf("kam") < 0 && langs.indexOf("fuv") >= 0,
-        "只声明 101 个 Bob 语言代码，富拉语使用 fuv");
+        "只声明 102 个 Bob 语言代码，富拉语使用 fuv");
+    ok(langs.indexOf("ka") >= 0 && langs.indexOf("jy") >= 0,
+        "格鲁吉亚语同时声明 Bob 的 ka 与 jy 两个代码");
 
     // 2. 缺 API Key
     withOptions({ apiKey: "" });
@@ -803,6 +805,11 @@ var EN = { text: "hello world", lang: "en" };
     withOptions({ model: "eleven_v3" });
     await speak({ text: "မင်္ဂလာပါ", lang: "my" });
     ok(lastRequest.body.language_code === undefined, "v3 不下发 v4 独有的缅甸语代码，避免 400");
+    await speak({ text: "გამარჯობა", lang: "jy" });
+    ok(lastRequest.body.language_code === "ka", "v3 把 Bob 的格鲁吉亚语别名 jy 映射为 ka");
+    withOptions({});
+    await speak({ text: "გამარჯობა", lang: "jy" });
+    ok(lastRequest.body.language_code === undefined, "Flash v2.5 不支持格鲁吉亚语时不下发 language_code");
     withOptions({ model: "eleven_v3_conversational" });
     await speak({ text: "salom", lang: "uz" });
     ok(lastRequest.body.language_code === undefined, "v3 Conversational 不下发 v4 独有的乌兹别克语代码");
@@ -869,11 +876,12 @@ var EN = { text: "hello world", lang: "en" };
     ok(v.result === true && ws.sent[1].inputs[0].text === "a" && ws.sent[2].close_socket === true,
         "Turbo 配置验证也用 WebSocket 单字符合成并 flush");
     ok(ws.options.timeoutInterval === 15 && ws.closed, "Turbo 验证遵守验证超时并清理连接");
-    await speak({ text: new Array(10001).join("x"), lang: "en" });
+    r = await speak({ text: new Array(2001).join("x"), lang: "en" });
+    ok(r.result, "Turbo 恰好 2000 字符可请求");
     var socketCount = sockets.length;
-    r = await speak({ text: new Array(10002).join("x"), lang: "en" });
-    ok(r.error && r.error.type === "param" && r.error.message.indexOf("插件单次上限") >= 0 &&
-        sockets.length === socketCount, "Turbo 明确标注本地 10000 字符上限，超长文本不建连接");
+    r = await speak({ text: new Array(2002).join("x"), lang: "en" });
+    ok(r.error && r.error.type === "param" && r.error.message.indexOf("插件单次上限 2000") >= 0 &&
+        sockets.length === socketCount, "Turbo 按官方建议本地限制 2000 字符，超长文本不建连接");
 
     // 32. 失败时不播放部分音频，且所有终止路径都关闭 socket / 清理 timer。
     nextSocketEvents = [{ type: "message", value: { error: "insufficient_permissions", message: "no tts scope" } }];
