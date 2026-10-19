@@ -24,7 +24,7 @@
 
 **v4 系列。** [官方 TTS 指南](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech)确认普通 v4 可以使用 Create speech；[实时对话指南](https://elevenlabs.io/docs/eleven-api/guides/how-to/websockets/realtime-tdd)提供 v4 Turbo 的 WebSocket 协议。两款仅下发稳定性和相似度，忽略语速、风格和 Speaker Boost；v4 的粤语下发 `yue`。v4 单次上限为 10000 字符；Turbo 的 10000 字符是插件的本地限制。官方的低延迟指标不包含网络和本插件收齐整段音频的等待时间。
 
-**101 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
+**102 个 Bob 语言代码**，并按模型能力决定是否下发 `language_code`（Multilingual v2 采用自动识别，插件保守地不下发）。富拉语使用 Bob 的 `fuv`，发送到 ElevenLabs 时映射为 `ff`；Bob 为格鲁吉亚语登记了 `ka` 和 `jy` 两个代码，插件两个都声明，均映射为 `ka`；ElevenLabs 的 `kam` 没有对应的 Bob 语言代码，不对 Bob 声明。超过模型单次字符上限会提前拦截并说明，不用等 API 报错。
 
 **可测试、可发布。** `make test` 用 macOS 自带的 jsc —— 也就是 Bob 跑插件的同一个 JavaScriptCore —— 测插件运行时、同步器、发布器和 API 核验工具，不联网、不消耗额度。打 tag 自动发版，工具链只用 Makefile 和标准库 Python，无需 Node。
 
